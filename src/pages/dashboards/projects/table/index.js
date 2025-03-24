@@ -29,13 +29,13 @@ import Spinner from 'src/views/spinner'
 import * as Yup from 'yup'
 import { yupResolver } from '@hookform/resolvers/yup'
 import { toast } from 'react-hot-toast'
-import { create } from 'ipfs-http-client'
-import { Buffer } from 'buffer'
+import axios from 'axios'
 import { deleteProject, addLand, fetchProject } from 'src/store/apps/user'
 import { ethers } from 'ethers'
 import LandDeveloperSale from '../../../../contract-abis/landDeveloperSale.json'
 import LandNFT from '../../../../contract-abis/landNft.json'
 import HocToken from '../../../../contract-abis/HOC-Token.json'
+import { formatErrorMessage, logError } from 'src/utils/errorHandler'
 
 const useStyles = makeStyles(theme => ({
   link: {
@@ -70,18 +70,11 @@ const ProjectTable = () => {
   const classes = useStyles()
   const signer = state?.signer?.signer
 
-  const projectId = '2I1oqhW4ncFv71LUKDOVWWRZ1ZH'
-  const projectSecret = 'd8538b15a850ae329e8b348dbbd6311d'
-  const auth = 'Basic ' + Buffer.from(projectId + ':' + projectSecret).toString('base64')
-
-  const client = create({
-    host: 'ipfs.infura.io',
-    port: 5001,
-    protocol: 'https',
-    headers: {
-      authorization: auth
-    }
-  })
+  // Pinata credentials
+  const pinataApiKey = '1acc89c3ecbd58333e9d'
+  const pinataSecretApiKey = 'a546f01c561adfa84518187f253b6eefe3220f4d5c7eb0fb30f60673c4d91f9d'
+  const pinataJWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQiOiI0M2I3ZDRlOS1hZDUzLTRkYzQtYmI5My0wYjBhMmJkYWZjNDUiLCJlbWFpbCI6Im5ncy5uYWVlbWFzaHJhZkBnbWFpbC5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwicGluX3BvbGljeSI6eyJyZWdpb25zIjpbeyJkZXNpcmVkUmVwbGljYXRpb25Db3VudCI6MSwiaWQiOiJGUkExIn0seyJkZXNpcmVkUmVwbGljYXRpb25Db3VudCI6MSwiaWQiOiJOWUMxIn1dLCJ2ZXJzaW9uIjoxfSwibWZhX2VuYWJsZWQiOmZhbHNlLCJzdGF0dXMiOiJBQ1RJVkUifSwiYXV0aGVudGljYXRpb25UeXBlIjoic2NvcGVkS2V5Iiwic2NvcGVkS2V5S2V5IjoiMWFjYzg5YzNlY2JkNTgzMzNlOWQiLCJzY29wZWRLZXlTZWNyZXQiOiJhNTQ2ZjAxYzU2MWFkZmE4NDUxODE4N2YyNTNiNmVlZmUzMjIwZjRkNWM3ZWIwZmIzMGY2MDY3M2M0ZDkxZjlkIiwiZXhwIjoxNzc0MzQ1MDgxfQ.5ObykNMJUjCf5BNPF3ChmmLyn-G6hfTgKeahC7QHFJw'
+  const pinataGateway = 'https://red-impressive-beetle-555.mypinata.cloud'
 
   // Form validation schema
   const validationSchema = Yup.object().shape({
@@ -94,6 +87,60 @@ const ProjectTable = () => {
     plotImage: Yup.string(),
     youtubeLinks: Yup.string()
   })
+
+  const uploadToPinata = async (file) => {
+    if (!file) {
+      console.error('No file provided to uploadToPinata');
+      return null;
+    }
+    
+    // Log the file being uploaded for debugging
+    console.log('Uploading file to Pinata:', file.name, file.size, file.type);
+    
+    // Creating FormData
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+      console.log('Starting Pinata upload with JWT authentication');
+      
+      // Use pure fetch API with JWT authentication
+      const response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${pinataJWT}`
+        },
+        body: formData
+      });
+      
+      // Check for non-OK response
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Pinata error response:', errorText);
+        throw new Error(`Pinata upload failed with status: ${response.status}. ${errorText}`);
+      }
+      
+      // Parse the successful response
+      const data = await response.json();
+      console.log('Pinata upload successful:', data);
+      
+      if (data && data.IpfsHash) {
+        const ipfsUrl = `${pinataGateway}/ipfs/${data.IpfsHash}`;
+        console.log('Generated IPFS URL:', ipfsUrl);
+        return ipfsUrl;
+      } else {
+        logError('Pinata upload', 'No IPFS hash returned');
+        return null;
+      }
+    } catch (error) {
+      logError('Pinata upload', error);
+      console.error('Pinata upload error details:', {
+        message: error.message,
+        stack: error.stack
+      });
+      throw error;
+    }
+  };
 
   const handleAgentChange = e => {
     setParams(prevData => ({
@@ -125,14 +172,16 @@ const ProjectTable = () => {
       const newPaths = []
 
       for (const file of selectedFiles) {
-        const result = await client.add(file)
-        const path = `https://marketplace-argon.infura-ipfs.io/ipfs/${result.path}`
-        newPaths.push(path)
-        console.log('🚀 ~ file: index.js:131 ~ handleImageChange ~ path:', path)
+        const path = await uploadToPinata(file);
+        if (path) {
+          newPaths.push(path)
+          console.log('🚀 ~ file: index.js:131 ~ handleImageChange ~ path:', path)
+        }
       }
       setSelectedImage(newPaths)
     } catch (error) {
-      toast.error(error.message)
+      logError('Project operation', error)
+      toast.error(formatErrorMessage(error, 'Operation failed'))
     } finally {
       setLandLoading(false)
       setIsLoading(true)
@@ -247,7 +296,8 @@ const ProjectTable = () => {
       }
     } catch (error) {
       console.log('🚀 ~ file: index.js:133 ~ handleAddLand ~ error:', error)
-      toast.error(error.message)
+      logError('Project operation', error)
+      toast.error(formatErrorMessage(error, 'Operation failed'))
     } finally {
       setLandLoading(false)
       handleAddLandDialogClose()

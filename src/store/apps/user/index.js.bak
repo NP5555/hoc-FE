@@ -11,7 +11,7 @@ import toast from 'react-hot-toast'
 // ** Axios Imports
 import axios from 'axios'
 import { setUserData } from '../userData'
-import { setUser } from '../users'
+import { setUser, setUsers, setUsersLoading, setUsersError } from '../users'
 import { setArea } from '../area'
 import { setCurrency } from '../currency'
 import { setCategory } from '../category'
@@ -118,55 +118,54 @@ export const kyc = createAsyncThunk('appUsers/kyc', async data => {
             }
           }
         }
+      } catch (checkError) {
+        console.error('Error checking for existing KYC:', checkError);
+        // Continue with creation, as the check failed
       }
-    } catch (checkError) {
-      console.error('Error checking for existing KYC:', checkError);
-      // Continue with creation, as the check failed
-    }
-    
-    // If we get here, either the user doesn't have KYC or we couldn't check
-    // Proceed with creating a new KYC entry
-    let response = await fetch(`${BASE_URL_API}/UserKYC`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(data)
-    });
-    
-    console.log('KYC submission response status:', response.status);
-    
-    if (response.ok) {
-      toast.success('KYC submitted successfully');
-      return { success: true, message: 'KYC submitted successfully' };
-    } else {
-      // Specific handling for duplicate key constraint error
-      const responseText = await response.text().catch(() => null);
-      console.error('KYC submission error response:', responseText);
       
-      if (responseText && responseText.includes('duplicate key value')) {
-        toast.error('You already have a KYC submission. Please contact support to update your information.');
-        return { success: false, message: 'Duplicate KYC entry', isDuplicate: true };
+      // If we get here, either the user doesn't have KYC or we couldn't check
+      // Proceed with creating a new KYC entry
+      let response = await fetch(`${BASE_URL_API}/UserKYC`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+      });
+      
+      console.log('KYC submission response status:', response.status);
+      
+      if (response.ok) {
+        toast.success('KYC submitted successfully');
+        return { success: true, message: 'KYC submitted successfully' };
       } else {
-        // Handle other error cases
-        const errorMessage = responseText ? `KYC submission failed: ${responseText}` : 'KYC submission failed';
-        logError('KYC submission API', { 
-          status: response.status, 
-          statusText: response.statusText, 
-          data: responseText 
-        });
-        toast.error(errorMessage);
-        throw new Error(errorMessage);
+        // Specific handling for duplicate key constraint error
+        const responseText = await response.text().catch(() => null);
+        console.error('KYC submission error response:', responseText);
+        
+        if (responseText && responseText.includes('duplicate key value')) {
+          toast.error('You already have a KYC submission. Please contact support to update your information.');
+          return { success: false, message: 'Duplicate KYC entry', isDuplicate: true };
+        } else {
+          // Handle other error cases
+          const errorMessage = responseText ? `KYC submission failed: ${responseText}` : 'KYC submission failed';
+          logError('KYC submission API', { 
+            status: response.status, 
+            statusText: response.statusText, 
+            data: responseText 
+          });
+          toast.error(errorMessage);
+          throw new Error(errorMessage);
+        }
       }
+    } catch (error) {
+      // Fix: properly handle error object
+      const errorMsg = formatErrorMessage(error, 'Error submitting KYC');
+      logError('KYC submission', error);
+      toast.error(errorMsg);
+      throw error; // Re-throw to allow component to handle it
     }
-  } catch (error) {
-    // Fix: properly handle error object
-    const errorMsg = formatErrorMessage(error, 'Error submitting KYC');
-    logError('KYC submission', error);
-    toast.error(errorMsg);
-    throw error; // Re-throw to allow component to handle it
-  }
-})
+  })
 
 // ** Fetch Users KYC
 export const fetchKyc = createAsyncThunk('appUsers/updateKyc', async data => {
@@ -480,25 +479,72 @@ export const logout = createAsyncThunk('appUsers/logout', () => {
 })
 
 // ** Fetch Users
-export const fetchUser = createAsyncThunk('appUsers/fetchUser', async data => {
+export const fetchUsers = createAsyncThunk('appUsers/fetchUsers', async params => {
+  const { token, page = 1, take = 10 } = params
+  
   try {
-    let response = await fetch(`${BASE_URL_API}/users?page=${data.page}&take=${data.take}`, {
-      method: 'GET',
+    store.dispatch(setUsersLoading(true));
+    
+    console.log('Fetching agents with params:', { page, take });
+    
+    // Add a timeout to prevent hanging requests
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
+    const response = await axios.get(`${BASE_URL_API}/users/agent?page=${page}&take=${take}`, {
       headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${data.token}`
-      }
-    })
-    response = await response.json()
+        Authorization: `Bearer ${token}`
+      },
+      signal: controller.signal
+    }).finally(() => clearTimeout(timeoutId));
+    
     if (response.status === 200) {
-      store.dispatch(setUser(response.data.data))
+      console.log('Agents data fetched successfully');
+      if (response.data && response.data.data && response.data.data.data) {
+        store.dispatch(setUsers(response.data.data.data));
+      } else {
+        console.warn('Unexpected response format from agents API:', response.data);
+        store.dispatch(setUsers([]));
+      }
     } else {
-      store.dispatch(setUser(response.message))
+      console.error('Non-200 status code from agents API:', response.status);
+      store.dispatch(setUsersError('Failed to fetch users'));
+    }
+    
+    return {
+      data: response.data,
+      status: response.status
     }
   } catch (error) {
-    toast.error(error.message)
+    console.error('Error fetching users:', error);
+    
+    // Handle different error types
+    if (error.response && error.response.status === 404) {
+      console.log('Agents API returned 404, setting empty agents data');
+      store.dispatch(setUsers([]));
+      return {
+        data: { data: [] },
+        status: 200,
+        message: 'No users found'
+      }
+    } else if (error.code === 'ECONNABORTED' || error.name === 'AbortError') {
+      console.log('Agents API request timed out');
+      store.dispatch(setUsersError('Request timed out'));
+      return {
+        data: { data: [] },
+        status: 408,
+        message: 'Request timed out'
+      }
+    }
+    
+    store.dispatch(setUsersError(error.response ? error.response.data.message : 'Failed to fetch users'));
+    return {
+      data: { data: [] },
+      status: error.response ? error.response.status : 500,
+      message: error.response ? error.response.data.message : 'Failed to fetch users'
+    }
   }
-})
+});
 
 // ** Add Area
 export const addArea = createAsyncThunk('appUsers/addArea', async data => {
@@ -792,25 +838,54 @@ export const updateProject = createAsyncThunk('appUsers/updateProject', async da
 // ** Fetch Project
 export const fetchProject = createAsyncThunk('appUsers/fetchProject', async data => {
   try {
-    let response = await fetch(
-      `${BASE_URL_API}/project?page=${data.page}&take=${data.take}&developerId=${data.developerId}`,
+    console.log('Fetching projects with params:', {
+      page: data.page,
+      take: data.take,
+      developerId: data.developerId || 'none'
+    });
+    
+    // Add a timeout to prevent hanging requests
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
+    const response = await axios.get(
+      `${BASE_URL_API}/project?page=${data.page}&take=${data.take}${data.developerId ? `&developerId=${data.developerId}` : ''}`,
       {
-        method: 'GET',
         headers: {
           Authorization: `Bearer ${data.token}`
-        }
+        },
+        signal: controller.signal
       }
-    )
-    response = await response.json()
+    ).finally(() => clearTimeout(timeoutId));
+    
     if (response.status === 200) {
-      store.dispatch(setProject(response.data))
+      console.log('Project data fetched successfully:', response.data);
+      store.dispatch(setProject(response.data.data || []));
+      return response.data;
     } else {
-      store.dispatch(setProject(response.message))
+      console.error('Non-200 status code from project API:', response.status);
+      store.dispatch(setProject([]));
+      return { data: [] };
     }
   } catch (error) {
-    store.dispatch(setProject('Failed to load data'))
+    console.error('Error fetching projects:', error);
+    
+    // Handle 404 errors gracefully
+    if (error.response && error.response.status === 404) {
+      console.log('Project API returned 404, setting empty project data');
+      store.dispatch(setProject([]));
+    } else if (error.code === 'ECONNABORTED' || error.name === 'AbortError') {
+      console.log('Project API request timed out');
+      toast.error('Project data request timed out');
+      store.dispatch(setProject([]));
+    } else {
+      store.dispatch(setProject([]));
+      toast.error('Failed to load project data');
+    }
+    
+    return { data: [] };
   }
-})
+});
 
 // ** Fetch Project
 export const fetchProjects = createAsyncThunk('appUsers/fetchProjects', async data => {
@@ -932,23 +1007,50 @@ export const addType = createAsyncThunk('appUsers/addType', async data => {
 // ** Fetch Type
 export const fetchType = createAsyncThunk('appUsers/fetchType', async data => {
   try {
-    let response = await fetch(`${BASE_URL_API}/type?page=${data.page}&take=${data.take}`, {
-      method: 'GET',
+    console.log('Fetching types with params:', {
+      page: data.page,
+      take: data.take
+    });
+    
+    // Add a timeout to prevent hanging requests
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
+    const response = await axios.get(`${BASE_URL_API}/type?page=${data.page}&take=${data.take}`, {
       headers: {
-        'Content-Type': 'application/json',
         Authorization: `Bearer ${data.token}`
-      }
-    })
-    response = await response.json()
+      },
+      signal: controller.signal
+    }).finally(() => clearTimeout(timeoutId));
+    
     if (response.status === 200) {
-      store.dispatch(setTypes(response.data))
+      console.log('Type data fetched successfully:', response.data);
+      store.dispatch(setTypes(response.data.data || []));
+      return response.data;
     } else {
-      store.dispatch(setTypes(response.message))
+      console.error('Non-200 status code from type API:', response.status);
+      store.dispatch(setTypes([]));
+      return { data: [] };
     }
   } catch (error) {
-    toast.error(error.message) // toast.error(error.message)
+    console.error('Error fetching types:', error);
+    
+    // Handle 404 errors gracefully
+    if (error.response && error.response.status === 404) {
+      console.log('Type API returned 404, setting empty type data');
+      store.dispatch(setTypes([]));
+    } else if (error.code === 'ECONNABORTED' || error.name === 'AbortError') {
+      console.log('Type API request timed out');
+      toast.error('Type data request timed out');
+      store.dispatch(setTypes([]));
+    } else {
+      store.dispatch(setTypes([]));
+      toast.error('Failed to load type data');
+    }
+    
+    return { data: [] };
   }
-})
+});
 
 // ** Delete Type
 export const deleteType = createAsyncThunk('appUsers/deleteCurrency', async data => {
@@ -1266,13 +1368,15 @@ export const updateBuyRequests = createAsyncThunk('appUsers/updateBuyRequests', 
   }
 })
 
-export const appUsersSlice = createSlice({
+const appUsersSlice = createSlice({
   name: 'appUsers',
   initialState: {
     data: [],
     total: 1,
     data: {},
-    allData: []
+    allData: [],
+    users: [],
+    usersLoading: false
   },
   reducers: {},
   extraReducers: builder => {
@@ -1281,6 +1385,23 @@ export const appUsersSlice = createSlice({
       state.total = action.payload.total
       state.data = action.payload.data
       state.allData = action.payload.allData
+    })
+    
+    // For fetchUsers
+    .addCase(fetchUsers.pending, state => {
+      state.usersLoading = true
+    })
+    .addCase(fetchUsers.fulfilled, (state, action) => {
+      state.usersLoading = false
+      if (action.payload && action.payload.status === 200 && action.payload.data && action.payload.data.data) {
+        state.users = action.payload.data.data
+      } else {
+        state.users = []
+      }
+    })
+    .addCase(fetchUsers.rejected, state => {
+      state.usersLoading = false
+      state.users = []
     })
   }
 })
@@ -2067,3 +2188,53 @@ export const approveAdminKyc = createAsyncThunk('appUsers/approveAdminKyc', asyn
     return { success: false, message: 'Exception in approveAdminKyc', error: error.message };
   }
 })
+
+// ** Fetch User
+export const fetchUser = createAsyncThunk('appUsers/fetchUser', async data => {
+  try {
+    console.log('Fetching users with params:', {
+      page: data.page,
+      take: data.take
+    });
+    
+    // Add a timeout to prevent hanging requests
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
+    const response = await axios.get(`${BASE_URL_API}/users?page=${data.page}&take=${data.take}`, {
+      headers: {
+        Authorization: `Bearer ${data.token}`
+      },
+      signal: controller.signal
+    }).finally(() => clearTimeout(timeoutId));
+    
+    if (response.status === 200 && response.data && response.data.data) {
+      console.log('User data fetched successfully');
+      store.dispatch(setUser(response.data.data));
+      return response.data;
+    } else {
+      console.error('Invalid response format from users API:', response);
+      store.dispatch(setUser([]));
+      return { data: { data: [] } };
+    }
+  } catch (error) {
+    console.error('Error fetching user data:', error);
+    
+    if (error.response && error.response.status === 404) {
+      console.log('Users API returned 404, setting empty user data');
+      store.dispatch(setUser([]));
+    } else if (error.code === 'ECONNABORTED' || error.name === 'AbortError') {
+      console.log('Users API request timed out');
+      toast.error('User data request timed out');
+      store.dispatch(setUser([]));
+    } else {
+      store.dispatch(setUser([]));
+      toast.error(error.response?.data?.message || 'Failed to fetch user data');
+    }
+    
+    return { data: { data: [] } };
+  }
+});
+
+// Don't forget to export the reducer
+export default appUsersSlice.reducer

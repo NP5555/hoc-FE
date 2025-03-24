@@ -41,6 +41,7 @@ const UserDocumentsPage = () => {
   const [openDialog, setOpenDialog] = useState(false)
   const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [isDocumentsLoading, setIsDocumentsLoading] = useState(false)
 
   const router = useRouter()
   const { userId } = router.query
@@ -59,20 +60,13 @@ const UserDocumentsPage = () => {
 
   const loadData = () => {
     if (state?.userDocuments?.userDocumentsData === null) {
-      return (
-        <Typography variant='h6' align='center' sx={{ paddingTop: '25px', paddingBottom: '25px' }}>
-          No Record Found
-        </Typography>
-      )
+      return null
     } else if (state?.userDocuments?.userDocumentsData === 'Record not found') {
-      return (
-        <Typography align='center' sx={{ paddingTop: '15px', paddingBottom: '15px' }}>
-          Record not found
-        </Typography>
-      )
-    } else {
-      setData(state?.userDocuments?.userDocumentsData?.data)
+      return []
+    } else if (state?.userDocuments?.userDocumentsData?.data) {
+      return state?.userDocuments?.userDocumentsData?.data
     }
+    return []
   }
 
   const loadReqDocument = async () => {
@@ -98,7 +92,7 @@ const UserDocumentsPage = () => {
   }
 
   useEffect(() => {
-    loadData()
+    setData(loadData())
     loadDocCatalog()
     loadReqDocument()
   }, [state?.userDocuments?.userDocumentsData, state?.requestDocument?.requestDoc, state?.document?.documents])
@@ -128,25 +122,23 @@ const UserDocumentsPage = () => {
   }, [dispatch, state.reducer.userData.userData.token.accessToken, userId])
 
   useEffect(() => {
-    dispatch(
-      fetchRequestedDocuments({
-        token: state.reducer.userData.userData.token.accessToken,
-        page: 1,
-        take: 10,
-        userId: userId
+    if (userId) {
+      setIsDocumentsLoading(true)
+      dispatch(
+        fetchUserDocuments({
+          token: state.reducer.userData.userData.token.accessToken,
+          page: page,
+          take: 10,
+          userId: userId
+        })
+      ).finally(() => {
+        setIsDocumentsLoading(false)
       })
-    )
-  }, [dispatch, state.reducer.userData.userData.token.accessToken, userId])
+    }
+  }, [dispatch, state.reducer.userData.userData.token.accessToken, userId, page])
 
   const handlePaginationDocuments = (event, value) => {
-    // dispatch(
-    //   fetchAgentLand({
-    //     token: reducer.userData.userData.token.accessToken,
-    //     page: value,
-    //     take: 10
-    //   })
-    // )
-    // setPage(value)
+    setPage(value)
   }
 
   // add document request
@@ -308,53 +300,57 @@ const UserDocumentsPage = () => {
             <TableCell align='center'>File</TableCell>
           </TableRow>
         </TableHead>
-        {!state?.userDocuments?.userDocumentsData ? (
+        {isDocumentsLoading ? (
           <TableBody>
             <TableRow>
               <TableCell align='center' colSpan={3}>
-                <Typography variant='h6' align='center' sx={{ paddingTop: '25px', paddingBottom: '25px' }}>
-                  No Record Found
+                <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+                  <CircularProgress />
+                </Box>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        ) : !data || data.length === 0 ? (
+          <TableBody>
+            <TableRow>
+              <TableCell align='center' colSpan={3}>
+                <Typography variant='body1' align='center' sx={{ paddingTop: '25px', paddingBottom: '25px' }}>
+                  No documents found. Upload documents to see them here.
                 </Typography>
               </TableCell>
             </TableRow>
           </TableBody>
         ) : (
-          <>
-            <TableBody>
-              {!data ? (
-                ''
-              ) : (
-                <>
-                  {data.slice().map(row => (
-                    <TableRow key={row.id}>
-                      <TableCell align='center'>{row.name}</TableCell>
-                      <TableCell align='center'>{row.description}</TableCell>
-                      <TableCell align='center'>
-                        <a href={row.url} download target='_blank' rel='noopener noreferrer'>
-                          <Button variant='outlined'>
-                            <Icon fontSize='1.125rem' icon='material-symbols:file-download' size={24} />
-                          </Button>
-                        </a>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </>
-              )}
-            </TableBody>
-          </>
+          <TableBody>
+            {data.map(row => (
+              <TableRow key={row.id}>
+                <TableCell align='center'>{row.name}</TableCell>
+                <TableCell align='center'>{row.description}</TableCell>
+                <TableCell align='center'>
+                  <a href={row.url} download target='_blank' rel='noopener noreferrer'>
+                    <Button variant='outlined'>
+                      <Icon fontSize='1.125rem' icon='material-symbols:file-download' size={24} />
+                    </Button>
+                  </a>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
         )}
       </Table>
-      <Pagination
-        style={{
-          display: 'flex',
-          justifyContent: 'center',
-          paddingTop: '20px',
-          paddingBottom: '20px'
-        }}
-        count={state?.userDocuments?.userDocumentsData?.meta?.pageCount}
-        page={page}
-        onChange={handlePaginationDocuments}
-      />
+      {!isDocumentsLoading && data && data.length > 0 && (
+        <Pagination
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            paddingTop: '20px',
+            paddingBottom: '20px'
+          }}
+          count={state?.userDocuments?.userDocumentsData?.meta?.pageCount || 1}
+          page={page}
+          onChange={handlePaginationDocuments}
+        />
+      )}
 
       <Typography variant='h4' align='center' sx={{ paddingTop: '25px', paddingBottom: '25px' }}>
         Documents Catalogue

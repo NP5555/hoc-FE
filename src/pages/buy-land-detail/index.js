@@ -2,6 +2,7 @@ import React from 'react'
 import { useRouter } from 'next/router'
 import { useEffect, useState, useCallback } from 'react'
 import { BASE_URL_API } from 'src/configs/const'
+import axios from 'axios'
 import HOCMarketplace from '../../contract-abis/HOCMarketplace.json'
 import LandNFT from '../../contract-abis/landNft.json'
 import LandDeveloperSale from '../../contract-abis/landDeveloperSale.json'
@@ -39,9 +40,8 @@ import Icon from 'src/@core/components/icon'
 import { toast } from 'react-hot-toast'
 import { ethers } from 'ethers'
 import { buyLand, updateAgentLand, tradeLand } from 'src/store/apps/user'
-import { create } from 'ipfs-http-client'
-import { Buffer } from 'buffer'
 import HocToken from '../../contract-abis/HOC-Token.json'
+import { formatErrorMessage, logError } from 'src/utils/errorHandler'
 
 const useStyles = makeStyles(theme => ({
   link: {
@@ -79,18 +79,11 @@ const NFTPage = () => {
 
   const signer = state.signer.signer
 
-  const projectId = '2I1oqhW4ncFv71LUKDOVWWRZ1ZH'
-  const projectSecret = 'd8538b15a850ae329e8b348dbbd6311d'
-  const auth = 'Basic ' + Buffer.from(projectId + ':' + projectSecret).toString('base64')
-
-  const client = create({
-    host: 'ipfs.infura.io',
-    port: 5001,
-    protocol: 'https',
-    headers: {
-      authorization: auth
-    }
-  })
+  // Pinata credentials
+  const pinataApiKey = '1acc89c3ecbd58333e9d'
+  const pinataSecretApiKey = 'a546f01c561adfa84518187f253b6eefe3220f4d5c7eb0fb30f60673c4d91f9d'
+  const pinataJWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQiOiI0M2I3ZDRlOS1hZDUzLTRkYzQtYmI5My0wYjBhMmJkYWZjNDUiLCJlbWFpbCI6Im5ncy5uYWVlbWFzaHJhZkBnbWFpbC5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwicGluX3BvbGljeSI6eyJyZWdpb25zIjpbeyJkZXNpcmVkUmVwbGljYXRpb25Db3VudCI6MSwiaWQiOiJGUkExIn0seyJkZXNpcmVkUmVwbGljYXRpb25Db3VudCI6MSwiaWQiOiJOWUMxIn1dLCJ2ZXJzaW9uIjoxfSwibWZhX2VuYWJsZWQiOmZhbHNlLCJzdGF0dXMiOiJBQ1RJVkUifSwiYXV0aGVudGljYXRpb25UeXBlIjoic2NvcGVkS2V5Iiwic2NvcGVkS2V5S2V5IjoiMWFjYzg5YzNlY2JkNTgzMzNlOWQiLCJzY29wZWRLZXlTZWNyZXQiOiJhNTQ2ZjAxYzU2MWFkZmE4NDUxODE4N2YyNTNiNmVlZmUzMjIwZjRkNWM3ZWIwZmIzMGY2MDY3M2M0ZDkxZjlkIiwiZXhwIjoxNzc0MzQ1MDgxfQ.5ObykNMJUjCf5BNPF3ChmmLyn-G6hfTgKeahC7QHFJw'
+  const pinataGateway = 'https://red-impressive-beetle-555.mypinata.cloud'
 
   const toggleModalVideo = () => {
     setIsModalOpenVideo(!isModalOpenVideo)
@@ -113,6 +106,49 @@ const NFTPage = () => {
     setOpenDialog(false)
   }
 
+  const uploadMetadataToPinata = async (metadata) => {
+    try {
+      console.log('Starting Pinata metadata upload with JWT authentication', metadata);
+      
+      // Use pure fetch API with JWT authentication
+      const response = await fetch('https://api.pinata.cloud/pinning/pinJSONToIPFS', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${pinataJWT}`
+        },
+        body: JSON.stringify(metadata)
+      });
+      
+      // Check for non-OK response
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Pinata metadata error response:', errorText);
+        throw new Error(`Pinata metadata upload failed with status: ${response.status}. ${errorText}`);
+      }
+      
+      // Parse the successful response
+      const data = await response.json();
+      console.log('Pinata metadata upload successful:', data);
+      
+      if (data && data.IpfsHash) {
+        const ipfsUrl = `${pinataGateway}/ipfs/${data.IpfsHash}`;
+        console.log('Generated IPFS URL for metadata:', ipfsUrl);
+        return ipfsUrl;
+      } else {
+        logError('Pinata metadata upload', 'No IPFS hash returned');
+        return null;
+      }
+    } catch (error) {
+      logError('Pinata metadata upload', error);
+      console.error('Pinata metadata upload error details:', {
+        message: error.message,
+        stack: error.stack
+      });
+      throw error;
+    }
+  };
+
   const handleBuyInstallment = async data => {
     setIsLoading(true)
 
@@ -131,7 +167,8 @@ const NFTPage = () => {
       await dispatch(buyLand(requestData))
       router.push('/dashboards/buyLand', undefined, { shallow: true })
     } catch (error) {
-      toast.error(error.message)
+      logError('Land operation', error)
+      toast.error(formatErrorMessage(error, 'Operation failed'))
     } finally {
       setIsLoading(false)
       setOpenDialog(false)
@@ -155,7 +192,8 @@ const NFTPage = () => {
       await dispatch(buyLand(requestData))
       router.push('/dashboards/buyLand', undefined, { shallow: true })
     } catch (error) {
-      toast.error(error.message)
+      logError('Land operation', error)
+      toast.error(formatErrorMessage(error, 'Operation failed'))
     } finally {
       setIsLoading(false)
       setOpenDialog(false)
@@ -197,9 +235,7 @@ const NFTPage = () => {
         ]
       }
 
-      const metadataString = JSON.stringify(metadata)
-      const result = await client.add(metadataString)
-      const uri = `https://marketplace-argon.infura-ipfs.io/ipfs/${result.path}`
+      const uri = await uploadMetadataToPinata(metadata);
 
       let tx
       if (data.project.currency.isNative) {
@@ -306,9 +342,8 @@ const NFTPage = () => {
         ]
       }
 
-      const metadataString = JSON.stringify(metadata)
-      const result = await client.add(metadataString)
-      const uri = `https://marketplace-argon.infura-ipfs.io/ipfs/${result.path}`
+      const uri = await uploadMetadataToPinata(metadata);
+      
       let tx
       let commission = await landSaleInstance.agentCommission()
       let price = Number(data.project.price)

@@ -9,9 +9,10 @@ import CircularProgress from '@mui/material/CircularProgress'
 import TextField from '@mui/material/TextField'
 import Box from '@mui/material/Box'
 import { addArea } from 'src/store/apps/user'
-import { create } from 'ipfs-http-client'
-import { Buffer } from 'buffer'
+import axios from 'axios'
 import { Typography } from '@mui/material'
+import { toast } from 'react-hot-toast'
+import { formatErrorMessage, logError } from 'src/utils/errorHandler'
 
 import { uploadUserDocuments } from 'src/store/apps/user'
 
@@ -54,18 +55,11 @@ const SidebarAddDocuments = props => {
   const dispatch = useDispatch()
   const state = useSelector(state => state)
 
-  const projectId = '2I1oqhW4ncFv71LUKDOVWWRZ1ZH'
-  const projectSecret = 'd8538b15a850ae329e8b348dbbd6311d'
-  const auth = 'Basic ' + Buffer.from(projectId + ':' + projectSecret).toString('base64')
-
-  const client = create({
-    host: 'ipfs.infura.io',
-    port: 5001,
-    protocol: 'https',
-    headers: {
-      authorization: auth
-    }
-  })
+  // Pinata credentials
+  const pinataApiKey = '1acc89c3ecbd58333e9d'
+  const pinataSecretApiKey = 'a546f01c561adfa84518187f253b6eefe3220f4d5c7eb0fb30f60673c4d91f9d'
+  const pinataJWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQiOiI0M2I3ZDRlOS1hZDUzLTRkYzQtYmI5My0wYjBhMmJkYWZjNDUiLCJlbWFpbCI6Im5ncy5uYWVlbWFzaHJhZkBnbWFpbC5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwicGluX3BvbGljeSI6eyJyZWdpb25zIjpbeyJkZXNpcmVkUmVwbGljYXRpb25Db3VudCI6MSwiaWQiOiJGUkExIn0seyJkZXNpcmVkUmVwbGljYXRpb25Db3VudCI6MSwiaWQiOiJOWUMxIn1dLCJ2ZXJzaW9uIjoxfSwibWZhX2VuYWJsZWQiOmZhbHNlLCJzdGF0dXMiOiJBQ1RJVkUifSwiYXV0aGVudGljYXRpb25UeXBlIjoic2NvcGVkS2V5Iiwic2NvcGVkS2V5S2V5IjoiMWFjYzg5YzNlY2JkNTgzMzNlOWQiLCJzY29wZWRLZXlTZWNyZXQiOiJhNTQ2ZjAxYzU2MWFkZmE4NDUxODE4N2YyNTNiNmVlZmUzMjIwZjRkNWM3ZWIwZmIzMGY2MDY3M2M0ZDkxZjlkIiwiZXhwIjoxNzc0MzQ1MDgxfQ.5ObykNMJUjCf5BNPF3ChmmLyn-G6hfTgKeahC7QHFJw'
+  const pinataGateway = 'https://red-impressive-beetle-555.mypinata.cloud'
 
   const handleClose = () => {
     toggle()
@@ -73,27 +67,113 @@ const SidebarAddDocuments = props => {
     setFileName('')
     setFileTag('')
   }
+  
+  const uploadToPinata = async (file) => {
+    if (!file) {
+      console.error('No file provided to uploadToPinata');
+      return null;
+    }
+    
+    // Log the file being uploaded for debugging
+    console.log('Uploading file to Pinata:', file.name, file.size, file.type);
+    
+    // Creating FormData
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+      console.log('Starting Pinata upload with JWT authentication');
+      
+      // Use pure fetch API with JWT authentication
+      const response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${pinataJWT}`
+        },
+        body: formData
+      });
+      
+      // Check for non-OK response
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Pinata error response:', errorText);
+        throw new Error(`Pinata upload failed with status: ${response.status}. ${errorText}`);
+      }
+      
+      // Parse the successful response
+      const data = await response.json();
+      console.log('Pinata upload successful:', data);
+      
+      if (data && data.IpfsHash) {
+        const ipfsUrl = `${pinataGateway}/ipfs/${data.IpfsHash}`;
+        console.log('Generated IPFS URL:', ipfsUrl);
+        return ipfsUrl;
+      } else {
+        logError('Pinata upload', 'No IPFS hash returned');
+        return null;
+      }
+    } catch (error) {
+      logError('Pinata upload', error);
+      console.error('Pinata upload error details:', {
+        message: error.message,
+        stack: error.stack
+      });
+      throw error;
+    }
+  };
 
   const handleFileChange = async event => {
     const file = event.target.files[0]
+    if (!file) {
+      toast.error('No file selected')
+      return
+    }
 
+    // Add quick form validation
+    if (!fileName.trim()) {
+      toast.error('Please enter a file name')
+      return
+    }
+
+    setIsLoading(true)
     try {
-      const result = await client.add(file)
-      const path = `https://marketplace-argon.infura-ipfs.io/ipfs/${result.path}`
+      console.log(`Starting upload for file: ${file.name} (${file.size} bytes)`)
+      const path = await uploadToPinata(file);
+      
+      if (!path) {
+        toast.error('Failed to upload to Pinata. Please try again.');
+        return;
+      }
 
+      // Add pagination parameters to avoid the 422 error
       let data = {
         token: state.reducer.userData.userData.token.accessToken,
         url: path,
         name: fileName,
-        description: fileTag,
-        userId: state?.reducer?.userData?.userData?.user?.id
+        description: fileTag || 'Document', // Provide default if empty
+        userId: state?.reducer?.userData?.userData?.user?.id,
+        page: 1,
+        take: 10
       }
-      await dispatch(uploadUserDocuments(data))
+      
+      console.log('Dispatching document upload with data:', data);
+      const result = await dispatch(uploadUserDocuments(data))
+      console.log('Upload result:', result);
+      
+      // Success notification
+      toast.success(`File "${fileName}" successfully uploaded`);
+      
+      // Clear form fields
+      setFileName('');
+      setFileTag('');
+      
+      // Close drawer after successful upload
+      handleClose();
     } catch (error) {
-      console.log('🚀 ~ file: index.js:114 ~ handleImageUpload ~ error:', error)
-      toast.error(error)
+      logError('Document upload', error)
+      toast.error(formatErrorMessage(error, 'Error uploading document. Please try again.'))
     } finally {
-      handleClose()
+      setIsLoading(false)
     }
   }
 
@@ -171,20 +251,6 @@ const SidebarAddDocuments = props => {
             Add File
           </Button>
         </Box>
-        {/* <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 5 }}>
-          {isLoading ? (
-            <CircularProgress />
-          ) : (
-            <>
-              <Button type='submit' variant='contained' onClick={onSubmit} sx={{ mt: 3, mx: 1, width: '40%' }}>
-                Submit
-              </Button>
-              <Button variant='outlined' color='secondary' onClick={handleClose} sx={{ mt: 3, mx: 1, width: '40%' }}>
-                Cancel
-              </Button>
-            </>
-          )}
-        </Box> */}
       </Box>
     </Drawer>
   )

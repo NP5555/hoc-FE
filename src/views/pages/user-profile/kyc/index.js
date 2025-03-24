@@ -17,11 +17,11 @@ import {
 } from '@mui/material'
 import { MuiTelInput } from 'mui-tel-input'
 import toast from 'react-hot-toast'
-import { create } from 'ipfs-http-client'
-import { Buffer } from 'buffer'
-import { kyc } from 'src/store/apps/user'
+import axios from 'axios'
 import Web3Modal from 'web3modal'
 import { ethers } from 'ethers'
+import { kyc } from 'src/store/apps/user'
+import { formatErrorMessage, logError } from 'src/utils/errorHandler'
 
 const KYC = () => {
   const [previewPassport, setPreviewPassport] = useState(null)
@@ -62,19 +62,12 @@ const KYC = () => {
 
   const [errors, setErrors] = useState({})
 
-  const projectId = '2I1oqhW4ncFv71LUKDOVWWRZ1ZH'
-  const projectSecret = 'd8538b15a850ae329e8b348dbbd6311d'
-  const auth = 'Basic ' + Buffer.from(projectId + ':' + projectSecret).toString('base64')
-
-  const client = create({
-    host: 'ipfs.infura.io',
-    port: 5001,
-    protocol: 'https',
-    headers: {
-      authorization: auth
-    }
-  })
-
+  // Pinata credentials
+  const pinataApiKey = '1acc89c3ecbd58333e9d'
+  const pinataSecretApiKey = 'a546f01c561adfa84518187f253b6eefe3220f4d5c7eb0fb30f60673c4d91f9d'
+  const pinataJWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQiOiI0M2I3ZDRlOS1hZDUzLTRkYzQtYmI5My0wYjBhMmJkYWZjNDUiLCJlbWFpbCI6Im5ncy5uYWVlbWFzaHJhZkBnbWFpbC5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwicGluX3BvbGljeSI6eyJyZWdpb25zIjpbeyJkZXNpcmVkUmVwbGljYXRpb25Db3VudCI6MSwiaWQiOiJGUkExIn0seyJkZXNpcmVkUmVwbGljYXRpb25Db3VudCI6MSwiaWQiOiJOWUMxIn1dLCJ2ZXJzaW9uIjoxfSwibWZhX2VuYWJsZWQiOmZhbHNlLCJzdGF0dXMiOiJBQ1RJVkUifSwiYXV0aGVudGljYXRpb25UeXBlIjoic2NvcGVkS2V5Iiwic2NvcGVkS2V5S2V5IjoiMWFjYzg5YzNlY2JkNTgzMzNlOWQiLCJzY29wZWRLZXlTZWNyZXQiOiJhNTQ2ZjAxYzU2MWFkZmE4NDUxODE4N2YyNTNiNmVlZmUzMjIwZjRkNWM3ZWIwZmIzMGY2MDY3M2M0ZDkxZjlkIiwiZXhwIjoxNzc0MzQ1MDgxfQ.5ObykNMJUjCf5BNPF3ChmmLyn-G6hfTgKeahC7QHFJw'
+  const pinataGateway = 'https://red-impressive-beetle-555.mypinata.cloud'
+  
   const dispatch = useDispatch()
 
   // Email validation
@@ -87,81 +80,177 @@ const KYC = () => {
   const handleDeletePassportImage = () => {
     setFormData(prevData => ({
       ...prevData,
-      passportImage: null,
+      passportImage: '',
       isPassport: false
     }))
     setPreviewPassport(null)
+    console.log('Passport image deleted')
   }
 
   const handleDeleteNicFrontImage = () => {
     setFormData(prevData => ({
       ...prevData,
-      nicFrontImage: null
+      nicFrontImage: ''
     }))
     setPreviewNicFront(null)
+    console.log('NIC front image deleted')
   }
 
   const handleDeleteNicBackImage = () => {
     setFormData(prevData => ({
       ...prevData,
-      nicBackImage: null
+      nicBackImage: ''
     }))
     setPreviewNicBack(null)
+    console.log('NIC back image deleted')
   }
 
   const handleDeleteSignature = () => {
     setFormData(prevData => ({
       ...prevData,
-      signatureImage: null
+      signatureImage: ''
     }))
     setPreviewSignature(null)
+    console.log('Signature image deleted')
   }
+
+  const uploadToPinata = async (file) => {
+    if (!file) {
+      console.error('No file provided to uploadToPinata');
+      return null;
+    }
+    
+    // Log the file being uploaded for debugging
+    console.log('Uploading file to Pinata:', file.name, file.size, file.type);
+    
+    // Creating FormData
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+      console.log('Starting Pinata upload with JWT authentication');
+      
+      // Use pure fetch API with JWT authentication
+      const response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${pinataJWT}`
+        },
+        body: formData
+      });
+      
+      // Check for non-OK response
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Pinata error response:', errorText);
+        throw new Error(`Pinata upload failed with status: ${response.status}. ${errorText}`);
+      }
+      
+      // Parse the successful response
+      const data = await response.json();
+      console.log('Pinata upload successful:', data);
+      
+      if (data && data.IpfsHash) {
+        const ipfsUrl = `${pinataGateway}/ipfs/${data.IpfsHash}`;
+        console.log('Generated IPFS URL:', ipfsUrl);
+        return ipfsUrl;
+      } else {
+        logError('Pinata upload', 'No IPFS hash returned');
+        return null;
+      }
+    } catch (error) {
+      logError('Pinata upload', error);
+      console.error('Pinata upload error details:', {
+        message: error.message,
+        stack: error.stack
+      });
+      throw error;
+    }
+  };
 
   const handleImageUpload = async e => {
     const file = e.target.files[0]
+    if (!file) {
+      toast.error('No file selected')
+      return
+    }
+    
+    // Set loading state
+    setLoading(true)
+
     const reader = new FileReader()
 
-    const uploadImage = async (name, previewState) => {
-      try {
-        const result = await client.add(file)
+    try {
+      const ipfsUrl = await uploadToPinata(file)
+      if (!ipfsUrl) {
+        toast.error('Failed to upload to Pinata. Please try again.')
+        setLoading(false)
+        return
+      }
+      
+      const fieldName = e.target.name
+
+      // Update the appropriate preview based on the field name
+      if (fieldName === 'passportImage') {
+        setPreviewPassport(URL.createObjectURL(file))
+        
+        // If passport is provided, set NIC to "no image" placeholders
         setFormData(prevData => ({
           ...prevData,
-          [name]: `https://marketplace-argon.infura-ipfs.io/ipfs/${result.path}`
+          passportImage: ipfsUrl,
+          nicFrontImage: 'no image',
+          nicBackImage: 'no image',
+          isPassport: true
         }))
-        reader.onload = e => {
-          previewState(e.target.result)
-        }
-        reader.readAsDataURL(file)
-      } catch (error) {
-        toast.error(error)
+        
+        // Clear NIC previews if they exist
+        setPreviewNicFront(null)
+        setPreviewNicBack(null)
+        
+      } else if (fieldName === 'nicFrontImage') {
+        setPreviewNicFront(URL.createObjectURL(file))
+        
+        // If NIC front is provided, set passport to "no image" placeholder
+        setFormData(prevData => ({
+          ...prevData,
+          nicFrontImage: ipfsUrl,
+          passportImage: 'no image',
+          isPassport: false
+        }))
+        
+        // Clear passport preview if it exists
+        setPreviewPassport(null)
+        
+      } else if (fieldName === 'nicBackImage') {
+        setPreviewNicBack(URL.createObjectURL(file))
+        
+        // If NIC back is provided, set passport to "no image" placeholder
+        setFormData(prevData => ({
+          ...prevData,
+          nicBackImage: ipfsUrl,
+          passportImage: 'no image',
+          isPassport: false
+        }))
+        
+        // Clear passport preview if it exists
+        setPreviewPassport(null)
+        
+      } else if (fieldName === 'signatureImage') {
+        setPreviewSignature(URL.createObjectURL(file))
+        
+        setFormData(prevData => ({
+          ...prevData,
+          signatureImage: ipfsUrl
+        }))
       }
-    }
-
-    if (e.target.name === 'passportImage') {
-      setFormData(prevData => ({
-        ...prevData,
-        nicFrontImage: 'no image',
-        nicBackImage: 'no image'
-      }))
-      setFormData(prevData => ({
-        ...prevData,
-        isPassport: true
-      }))
-      uploadImage('passportImage', setPreviewPassport)
-    } else if (e.target.name === 'nicFrontImage') {
-      setFormData(prevData => ({
-        ...prevData,
-        passportImage: 'no image'
-      }))
-      uploadImage('nicFrontImage', setPreviewNicFront)
-    } else if (e.target.name === 'nicBackImage') {
-      setFormData(prevData => ({
-        ...prevData,
-        passportImage: 'no image'
-      }))
-      uploadImage('nicBackImage', setPreviewNicBack)
-    } else if (e.target.name === 'signatureImage') {
-      uploadImage('signatureImage', setPreviewSignature)
+      
+      toast.success(`${fieldName.replace('Image', '')} image uploaded successfully!`)
+      
+    } catch (error) {
+      logError('Pinata image upload', error)
+      toast.error(formatErrorMessage(error, 'Error uploading image. Please try again.'))
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -204,10 +293,58 @@ const KYC = () => {
 
   const handleValidate = () => {
     const newErrors = {}
+    
+    // Debug output for validation before processing
+    console.log("Form Data before validation:", { ...formData })
+    
+    // Special handling for ID documents (passport vs NIC)
+    const hasPassport = formData.passportImage && 
+                        formData.passportImage !== '' && 
+                        formData.passportImage !== 'no image'
+                        
+    const hasNicFront = formData.nicFrontImage && 
+                        formData.nicFrontImage !== '' && 
+                        formData.nicFrontImage !== 'no image'
+                        
+    const hasNicBack = formData.nicBackImage && 
+                       formData.nicBackImage !== '' && 
+                       formData.nicBackImage !== 'no image'
+    
+    const hasCompleteNic = hasNicFront && hasNicBack
+    
+    // Check if at least one form of ID is provided
+    if (!hasPassport && !hasCompleteNic) {
+      if (!hasPassport) {
+        newErrors.passportImage = 'Please provide passport or national ID'
+      }
+      
+      if (!hasNicFront) {
+        newErrors.nicFrontImage = 'Please provide front of ID'
+      }
+      
+      if (!hasNicBack) {
+        newErrors.nicBackImage = 'Please provide back of ID'
+      }
+    }
 
     // Check for empty fields and additional validation rules
     Object.entries(formData).forEach(([key, value]) => {
+      // Skip ID validation since we already handled it above
+      if (key === 'passportImage' || key === 'nicFrontImage' || key === 'nicBackImage') {
+        return;
+      }
+      
       if (value === '' || value === null) {
+        // Skip certain fields that can be empty
+        if (key === 'otherSourceOfIncome' && formData.sourceOfIncome !== 'others') {
+          return; // Skip validation for this field
+        }
+        
+        // Skip userId as it will be set automatically
+        if (key === 'userId') {
+          return;
+        }
+        
         newErrors[key] = 'This field is required'
       }
     })
@@ -217,23 +354,15 @@ const KYC = () => {
     }
 
     if (formData.sourceOfIncome === 'others') {
-      formData.sourceOfIncome = formData.otherSourceOfIncome
+      if (!formData.otherSourceOfIncome || formData.otherSourceOfIncome === '') {
+        newErrors.otherSourceOfIncome = 'Please specify the other source of income'
+      }
     }
 
-    if (formData.passportImage) {
-      formData.isPassport = true
-      delete newErrors.nicFrontImage
-      delete newErrors.nicBackImage
-    }
-
-    if (formData.nicFrontImage && formData.nicBackImage) {
-      delete newErrors.passportImage
-    }
-
-    delete newErrors.otherSourceOfIncome
-
+    // Debug output for validation
+    console.log("Validation Errors:", newErrors)
+    
     setErrors(newErrors)
-    console.log("🚀 ~ handleValidate ~ newErrors:", newErrors)
 
     return Object.keys(newErrors).length === 0
   }
@@ -242,23 +371,67 @@ const KYC = () => {
     e.preventDefault()
 
     setLoading(true)
+    
+    // Make sure userId is set before validation
     formData.userId = state?.reducer?.userData?.userData?.user?.id
+    
+    // Make sure empty "no image" placeholders are handled correctly
+    // If passport is provided, set NIC to "no image" placeholders
+    if (formData.passportImage && formData.passportImage !== '' && formData.passportImage !== 'no image') {
+      formData.nicFrontImage = 'no image'
+      formData.nicBackImage = 'no image'
+      formData.isPassport = true
+    }
+    
+    // If NIC is provided, set passport to "no image" placeholder
+    if ((formData.nicFrontImage && formData.nicFrontImage !== '' && formData.nicFrontImage !== 'no image') &&
+        (formData.nicBackImage && formData.nicBackImage !== '' && formData.nicBackImage !== 'no image')) {
+      formData.passportImage = 'no image'
+      formData.isPassport = false
+    }
+    
+    // If sourceOfIncome is "others", use the value from otherSourceOfIncome
+    if (formData.sourceOfIncome === 'others' && formData.otherSourceOfIncome) {
+      formData.sourceOfIncome = formData.otherSourceOfIncome
+    }
 
     const isValidated = handleValidate()
+    
+    console.log("Form is validated:", isValidated)
+    
     if (isValidated) {
       try {
-        await dispatch(kyc(formData))
-        router.push(`../../dashboards/analytics/`, undefined, { shallow: true })
+        console.log("Submitting KYC data:", formData)
+        const submissionData = { ...formData }
+        
+        // If we have a userId, proceed with submission
+        if (submissionData.userId) {
+          await dispatch(kyc(submissionData))
+          toast.success('KYC submitted successfully!')
+          router.push(`../../dashboards/analytics/`, undefined, { shallow: true })
+        } else {
+          toast.error('User ID is missing. Please try again or log in again.')
+          console.error("Missing user ID for KYC submission")
+        }
       } catch (error) {
-        console.error('Error submitting KYC:', error)
-        toast.error('Failed to submit KYC')
+        logError('KYC submission', error)
+        toast.error(formatErrorMessage(error, 'Failed to submit KYC'))
       } finally {
         setLoading(false)
       }
     } else {
-      toast.error('Form is incomplete')
-    } 
-    setLoading(false)
+      console.error("Form validation failed:", errors)
+      
+      // Show a more helpful error message
+      if (Object.keys(errors).length > 0) {
+        const missingFields = Object.keys(errors).join(', ')
+        toast.error(`Form is incomplete. Please fill in the following fields: ${missingFields}`)
+      } else {
+        toast.error('Form is incomplete. Please fill in all required fields.')
+      }
+      
+      setLoading(false)
+    }
   }
 
   return (
@@ -516,114 +689,132 @@ const KYC = () => {
               <Grid item xs={12} sm={12}>
                 <Divider />
               </Grid>
-              <Grid item xs={12} sm={5}>
-                <Typography variant='subtitle1'>Passport (all quadrangles must be visible)</Typography>
-              </Grid>
-              <Grid item xs={12} sm={3}>
-                <Box>
-                  {previewNicFront === null ? (
-                    <>
-                      <TextField
-                        type='file'
-                        name='passportImage'
-                        error={!!errors.passportImage}
-                        helperText={errors.passportImage}
-                        onChange={handleImageUpload}
-                      />
-                      {previewPassport === null ? (
-                        ''
-                      ) : (
-                        <>
-                          <img src={previewPassport} alt='Preview' style={{ maxHeight: '100px' }} />
-                          <Button onClick={handleDeletePassportImage}>Delete</Button>
-                        </>
-                      )}
-                    </>
-                  ) : (
-                    <TextField
-                      type='file'
-                      label='Passport Image'
-                      name='passportImage'
-                      onChange={handleImageUpload}
-                      disabled
-                    />
-                  )}
-                </Box>
-              </Grid>
               <Grid item xs={12} sm={12}>
-                <Divider />
-              </Grid>
-              <Grid item xs={12} sm={12}>
-                <Typography variant='h6' marginTop={3} marginBottom={3}>
-                  <b> Note:</b> If you don't have a passport, your ID is allowed. Please take a picture of the front and
-                  back
+                <Typography variant='h6' gutterBottom sx={{ fontWeight: 'bold', mt: 2 }}>
+                  Identity Verification
+                </Typography>
+                <Typography variant='body1' gutterBottom sx={{ color: 'text.secondary', mb: 2 }}>
+                  Please provide either your passport OR national ID card (front and back).
                 </Typography>
               </Grid>
-              <Grid item xs={12} sm={12}>
-                <Divider />
-              </Grid>
               <Grid item xs={12} sm={5}>
-                <Typography variant='subtitle1'>National ID Card (all quadrangles must be visible)</Typography>
+                <Typography variant='subtitle1' sx={{ fontWeight: 'medium' }}>
+                  Option 1: Passport 
+                  <Typography variant='caption' component="span" sx={{ ml: 1 }}>
+                    (all quadrangles must be visible)
+                  </Typography>
+                </Typography>
               </Grid>
-              <Grid item xs={12} sm={3}>
+              <Grid item xs={12} sm={7}>
                 <Box>
-                  {previewPassport === null ? (
-                    <>
-                      <TextField
-                        type='file'
-                        name='nicFrontImage'
-                        error={!!errors.nicFrontImage}
-                        helperText={errors.nicFrontImage}
-                        onChange={handleImageUpload}
-                      />
-                      {previewNicFront === null ? (
-                        ''
-                      ) : (
-                        <>
-                          <img src={previewNicFront} alt='Preview' style={{ maxHeight: '100px' }} />
-                          <Button onClick={handleDeleteNicFrontImage}>Delete</Button>
-                        </>
-                      )}
-                    </>
-                  ) : (
-                    <TextField type='file' name='nicFrontImage' onChange={handleImageUpload} disabled />
+                  <TextField
+                    type='file'
+                    name='passportImage'
+                    error={!!errors.passportImage}
+                    helperText={errors.passportImage}
+                    onChange={handleImageUpload}
+                    disabled={previewNicFront !== null || previewNicBack !== null}
+                    inputProps={{
+                      accept: 'image/*'
+                    }}
+                  />
+                  {previewPassport !== null && (
+                    <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <img src={previewPassport} alt='Passport Preview' style={{ maxHeight: '150px', borderRadius: '4px' }} />
+                      <Button 
+                        variant="outlined" 
+                        color="error" 
+                        size="small" 
+                        onClick={handleDeletePassportImage}
+                        sx={{ mt: 1 }}
+                      >
+                        Delete
+                      </Button>
+                    </Box>
                   )}
                 </Box>
               </Grid>
+              <Grid item xs={12} sm={12}>
+                <Divider sx={{ my: 2 }}>
+                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>OR</Typography>
+                </Divider>
+              </Grid>
+              <Grid item xs={12} sm={5}>
+                <Typography variant='subtitle1' sx={{ fontWeight: 'medium' }}>
+                  Option 2: National ID Card 
+                  <Typography variant='caption' component="span" sx={{ ml: 1 }}>
+                    (all quadrangles must be visible)
+                  </Typography>
+                </Typography>
+              </Grid>
               <Grid item xs={12} sm={3}>
                 <Box>
-                  <Box>
-                    {previewPassport === null ? (
-                      <>
-                        <TextField
-                          type='file'
-                          name='nicBackImage'
-                          error={!!errors.nicBackImage}
-                          helperText={errors.nicBackImage}
-                          onChange={handleImageUpload}
-                        />
-                        {previewNicBack === null ? (
-                          ''
-                        ) : (
-                          <>
-                            <img src={previewNicBack} alt='Preview' style={{ maxHeight: '100px' }} />
-                            <Button onClick={handleDeleteNicBackImage}>Delete</Button>
-                          </>
-                        )}
-                      </>
-                    ) : (
-                      <TextField type='file' disabled />
-                    )}
-                  </Box>
+                  <Typography variant='body2' gutterBottom>Front of ID:</Typography>
+                  <TextField
+                    type='file'
+                    name='nicFrontImage'
+                    error={!!errors.nicFrontImage}
+                    helperText={errors.nicFrontImage}
+                    onChange={handleImageUpload}
+                    disabled={previewPassport !== null}
+                    inputProps={{
+                      accept: 'image/*'
+                    }}
+                  />
+                  {previewNicFront !== null && (
+                    <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <img src={previewNicFront} alt='ID Front Preview' style={{ maxHeight: '150px', borderRadius: '4px' }} />
+                      <Button 
+                        variant="outlined" 
+                        color="error" 
+                        size="small" 
+                        onClick={handleDeleteNicFrontImage}
+                        sx={{ mt: 1 }}
+                      >
+                        Delete
+                      </Button>
+                    </Box>
+                  )}
                 </Box>
               </Grid>
+              <Grid item xs={12} sm={4}>
+                <Box>
+                  <Typography variant='body2' gutterBottom>Back of ID:</Typography>
+                  <TextField
+                    type='file'
+                    name='nicBackImage'
+                    error={!!errors.nicBackImage}
+                    helperText={errors.nicBackImage}
+                    onChange={handleImageUpload}
+                    disabled={previewPassport !== null}
+                    inputProps={{
+                      accept: 'image/*'
+                    }}
+                  />
+                  {previewNicBack !== null && (
+                    <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <img src={previewNicBack} alt='ID Back Preview' style={{ maxHeight: '150px', borderRadius: '4px' }} />
+                      <Button 
+                        variant="outlined" 
+                        color="error" 
+                        size="small" 
+                        onClick={handleDeleteNicBackImage}
+                        sx={{ mt: 1 }}
+                      >
+                        Delete
+                      </Button>
+                    </Box>
+                  )}
+                </Box>
+              </Grid>
+
               <Grid item xs={12} sm={12}>
                 <Divider />
               </Grid>
               <Grid item xs={12} sm={5}>
                 <Typography variant='subtitle1'>Signature (Image of your signature)</Typography>
               </Grid>
-              <Grid item xs={12} sm={6}>
+              <Grid item xs={12} sm={7}>
                 <Box>
                   <TextField
                     type='file'
@@ -631,14 +822,23 @@ const KYC = () => {
                     error={!!errors.signatureImage}
                     helperText={errors.signatureImage}
                     onChange={handleImageUpload}
+                    inputProps={{
+                      accept: 'image/*'
+                    }}
                   />
-                  {previewSignature === null ? (
-                    ''
-                  ) : (
-                    <>
-                      <img src={previewSignature} alt='Preview' style={{ maxHeight: '100px' }} />
-                      <Button onClick={handleDeleteSignature}>Delete</Button>
-                    </>
+                  {previewSignature !== null && (
+                    <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <img src={previewSignature} alt='Signature Preview' style={{ maxHeight: '100px', borderRadius: '4px' }} />
+                      <Button 
+                        variant="outlined" 
+                        color="error" 
+                        size="small" 
+                        onClick={handleDeleteSignature}
+                        sx={{ mt: 1 }}
+                      >
+                        Delete
+                      </Button>
+                    </Box>
                   )}
                 </Box>
               </Grid>
@@ -663,3 +863,4 @@ const KYC = () => {
 }
 
 export default KYC
+

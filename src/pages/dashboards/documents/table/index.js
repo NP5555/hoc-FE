@@ -24,27 +24,17 @@ const DocumentTable = () => {
   const state = useSelector(state => state)
   const [page, setPage] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
+  const documentState = useSelector(state => state.document)
 
   const dispatch = useDispatch()
 
-  const loadData = () => {
-    if (state?.document?.documents === null) {
-      return <Spinner />
-    } else if (
-      state?.document?.documents === 'Failed to load data' ||
-      state?.document?.documents === 'Record not found'
-    ) {
-      return (
-        <Typography align='center' sx={{ paddingTop: '15px', paddingBottom: '15px' }}>
-          Record not found
-        </Typography>
-      )
-    } else setData(state?.document?.documents)
-  }
-
   useEffect(() => {
-    loadData()
-  }, [state?.document?.documents])
+    if (documentState?.documents) {
+      setData(documentState.documents)
+    } else {
+      setData([])
+    }
+  }, [documentState])
 
   const handleDownload = ({ documentName }) => {
     const fileUrl = `${BASE_URL_API}//uploads/${documentName}`
@@ -71,6 +61,7 @@ const DocumentTable = () => {
       }
       await dispatch(deleteDocumentCatalog(data))
     } catch (error) {
+      console.error('Error deleting document:', error)
     } finally {
       setIsLoading(false)
     }
@@ -79,10 +70,26 @@ const DocumentTable = () => {
   const handleChange = (event, value) => {
     dispatch(
       fetchDocument({
-        token: state.reducer.userData.userData.token.accessToken
+        token: state.reducer.userData.userData.token.accessToken,
+        page: value,
+        take: 10
       })
     )
     setPage(value)
+  }
+
+  // If loading, show spinner
+  if (documentState.loading) {
+    return <Spinner />
+  }
+
+  // If error, show error message
+  if (documentState.error) {
+    return (
+      <Typography align='center' sx={{ paddingTop: '15px', paddingBottom: '15px', color: 'error.main' }}>
+        Error: {documentState.error}
+      </Typography>
+    )
   }
 
   return (
@@ -95,72 +102,66 @@ const DocumentTable = () => {
             <TableCell align='center'>Delete</TableCell>
           </TableRow>
         </TableHead>
-        {state?.document?.documents === null ? (
+        {!data || data.length === 0 ? (
           <TableBody>
             <TableRow>
               <TableCell align='center' colSpan={3}>
-                <Spinner />
+                <Typography variant='body1'>No documents found</Typography>
               </TableCell>
             </TableRow>
           </TableBody>
         ) : (
-          <>
-            <TableBody>
-              {data === undefined ? (
-                ''
-              ) : (
-                <>
-                  {data.slice().map(row => (
-                    <TableRow key={row.id}>
-                      <TableCell align='center'>{row.name}</TableCell>
-                      <TableCell align='center'>
-                        <Button onClick={() => handleDeleteRow(row.id)} variant='outlined'>
-                          <Link
-                            href={BASE_URL_API + row.document}
-                            download={row.name}
-                            onClick={handleDownload}
-                            sx={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              textDecoration: 'none',
-                              color: 'inherit'
-                            }}
-                          >
-                            <Icon fontSize='1.125rem' icon='material-symbols:download' size={24} />
-                          </Link>
-                        </Button>
-                      </TableCell>
-                      <TableCell align='center'>
-                        {isLoading ? (
-                          <CircularProgress size={24} />
-                        ) : (
-                          <>
-                            <Button onClick={() => handleDeleteRow(row.id)} variant='outlined'>
-                              <Icon fontSize='1.125rem' icon='fluent-mdl2:delete' size={24} />
-                            </Button>
-                          </>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </>
-              )}
-            </TableBody>
-          </>
+          <TableBody>
+            {data.map(row => (
+              <TableRow key={row.id}>
+                <TableCell align='center'>{row.name}</TableCell>
+                <TableCell align='center'>
+                  <Button variant='outlined'>
+                    <Link
+                      href={BASE_URL_API + row.document}
+                      download={row.name}
+                      onClick={handleDownload}
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        textDecoration: 'none',
+                        color: 'inherit'
+                      }}
+                    >
+                      <Icon fontSize='1.125rem' icon='material-symbols:download' size={24} />
+                    </Link>
+                  </Button>
+                </TableCell>
+                <TableCell align='center'>
+                  {isLoading ? (
+                    <CircularProgress size={24} />
+                  ) : (
+                    <>
+                      <Button onClick={() => handleDeleteRow(row.id)} variant='outlined'>
+                        <Icon fontSize='1.125rem' icon='fluent-mdl2:delete' size={24} />
+                      </Button>
+                    </>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
         )}
       </Table>
 
-      <Pagination
-        style={{
-          display: 'flex',
-          justifyContent: 'center',
-          paddingTop: '20px',
-          paddingBottom: '20px'
-        }}
-        count={state.category.categoryData?.meta?.pageCount}
-        page={page}
-        onChange={handleChange}
-      />
+      {data && data.length > 0 && (
+        <Pagination
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            paddingTop: '20px',
+            paddingBottom: '20px'
+          }}
+          count={state.category.categoryData?.meta?.pageCount || 1}
+          page={page}
+          onChange={handleChange}
+        />
+      )}
     </>
   )
 }

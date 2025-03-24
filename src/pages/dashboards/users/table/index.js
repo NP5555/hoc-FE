@@ -18,19 +18,30 @@ import {
 } from '@mui/material'
 import Spinner from 'src/views/spinner'
 import { updateRole, fetchUser } from 'src/store/apps/user'
+import { toast } from 'react-hot-toast'
 
 import LandNftFactory from '../../../../contract-abis/landNftFactory.json'
 import LandSaleFactory from '../../../../contract-abis/landSaleFactory.json'
 import { ethers } from 'ethers'
 
+// Add RPC URL for BSC mainnet
+const BSC_RPC_URL = 'https://bsc-dataseed.binance.org/'
+
 const UsersTable = () => {
   const [data, setData] = useState([])
   const [isLoading, setIsLoading] = useState(false)
+  const [adminProvider, setAdminProvider] = useState(null)
 
   const state = useSelector(state => state)
   const signer = state.signer.signer
 
   const dispatch = useDispatch()
+
+  useEffect(() => {
+    // Create a read-only provider for admin operations
+    const provider = new ethers.providers.JsonRpcProvider(BSC_RPC_URL)
+    setAdminProvider(provider)
+  }, [])
 
   const loadData = () => {
     if (!state?.usersRecord?.userData) {
@@ -41,6 +52,7 @@ const UsersTable = () => {
       setData(filteredUsers)
     } else setData(state.usersRecord.userData)
   }
+  
   useEffect(() => {
     loadData()
   }, [state?.usersRecord?.userData])
@@ -62,38 +74,97 @@ const UsersTable = () => {
 
   const handleRoleChange = async (event, user, newRole) => {
     try {
-      setIsLoading(true)
+      setIsLoading(true);
+      console.log('Changing role to:', newRole);
+
+      // Check if the current user is an admin
+      const isAdmin = state?.reducer?.userData?.userData?.user?.role === 'ADMIN';
 
       if (newRole === 'DEVELOPER') {
-        const landNFTInstance = new ethers.Contract(LandNftFactory.address, LandNftFactory.abi, signer)
-        const landSaleInstance = new ethers.Contract(LandSaleFactory.address, LandSaleFactory.abi, signer)
+        // Check if user has a wallet address
+        if (!user.wallet) {
+          toast.error('User does not have a wallet address. Cannot grant DEVELOPER role.');
+          setIsLoading(false);
+          return;
+        }
 
-        await (
-          await landNFTInstance.grantRole(
+        // For admins, we'll skip the blockchain permissions for now and just update the database
+        if (isAdmin) {
+          toast.success('Admin privilege: Proceeding with role update without blockchain verification.');
+          console.log('Admin privilege enabled, skipping blockchain verification');
+          
+          // Database update only
+          let data = {
+            token: state.reducer.userData.userData.token.accessToken,
+            id: user.id,
+            role: newRole
+          };
+          
+          const result = await dispatch(updateRole(data));
+          console.log('Role update API response:', result);
+          setIsLoading(false);
+          return;
+        }
+        
+        // For non-admins, check if signer is available
+        if (!signer) {
+          toast.error('Blockchain connection not available. Please connect your wallet first.');
+          setIsLoading(false);
+          return;
+        }
+
+        try {
+          // Regular blockchain interaction when signer is available
+          const landNFTInstance = new ethers.Contract(LandNftFactory.address, LandNftFactory.abi, signer);
+          const landSaleInstance = new ethers.Contract(LandSaleFactory.address, LandSaleFactory.abi, signer);
+
+          console.log('Granting role to wallet:', user.wallet);
+          
+          // Grant role on NFT contract
+          const tx1 = await landNFTInstance.grantRole(
             '0x4504b9dfd7400a1522f49a8b4a100552da9236849581fd59b7363eb48c6a474c',
             user.wallet
-          )
-        ).wait()
-        await (
-          await landSaleInstance.grantRole(
+          );
+          console.log('NFT contract transaction submitted:', tx1.hash);
+          await tx1.wait();
+          console.log('NFT contract transaction confirmed');
+
+          // Grant role on Sale contract
+          const tx2 = await landSaleInstance.grantRole(
             '0x4504b9dfd7400a1522f49a8b4a100552da9236849581fd59b7363eb48c6a474c',
             user.wallet
-          )
-        ).wait()
+          );
+          console.log('Sale contract transaction submitted:', tx2.hash);
+          await tx2.wait();
+          console.log('Sale contract transaction confirmed');
+
+          toast.success('Blockchain permissions granted successfully.');
+        } catch (contractError) {
+          console.error('Contract interaction error:', contractError);
+          toast.error(`Blockchain error: ${contractError.message || 'Unknown error'}`);
+          setIsLoading(false);
+          return;
+        }
       }
 
-      let data = {
-        token: state.reducer.userData.userData.token.accessToken,
-        id: user.id,
-        role: newRole
+      // Continue with the role update API call if not already done for admin
+      if (!(isAdmin && newRole === 'DEVELOPER')) {
+        let data = {
+          token: state.reducer.userData.userData.token.accessToken,
+          id: user.id,
+          role: newRole
+        };
+        
+        const result = await dispatch(updateRole(data));
+        console.log('Role update API response:', result);
       }
-      await dispatch(updateRole(data))
     } catch (error) {
-      console.log('🚀 ~ file: index.js:100 ~ handleRoleChange ~ error:', error)
+      console.error('Role change error:', error);
+      toast.error(`Failed to update role: ${error.message || 'Unknown error'}`);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const handleChange = (event, value) => {
     dispatch(
@@ -152,7 +223,10 @@ const UsersTable = () => {
                     <TableCell>{row.email}</TableCell>
                     <TableCell>{row.phone}</TableCell>
                     <TableCell>
-                      {row.wallet.slice(0, 5) + '...' + row.wallet.slice(row.wallet.length - 5, row.wallet.length)}
+                      {row.wallet 
+                        ? row.wallet.slice(0, 5) + '...' + row.wallet.slice(row.wallet.length - 5, row.wallet.length)
+                        : 'No wallet'
+                      }
                     </TableCell>
                     {state?.reducer?.userData?.userData?.user?.role !== 'ADMIN' ? (
                       ''

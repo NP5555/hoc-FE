@@ -115,51 +115,56 @@ const Register = () => {
       setLoading(true)
       if (!emailRegex.test(email)) {
         setEmailError('Please enter a valid email address.')
-
+        setLoading(false)
         return
       }
-      if (password.length < 5) {
-        setPasswordError('Password must be at least 5 characters')
-
-        toast.error('Password must be at least 5 characters')
-
+      if (password.length < 6) {
+        setPasswordError('Password must be at least 6 characters')
+        toast.error('Password must be at least 6 characters')
+        setLoading(false)
         return
       }
       if (password !== confirmPassword) {
         toast.error("Oops! Passwords don't match. Retry")
-
+        setLoading(false)
         return
       }
       if (!isChecked) {
         toast.error('Terms and conditions not accepted. Please agree')
-
+        setLoading(false)
         return
       }
-      if ((!firstName, !lastName, !email, !password, !phoneNumber, !isChecked, !account)) {
-        toast.error('Please fill all fields')
-
+      if (!firstName || !lastName || !email || !password || !phoneNumber || !isChecked || !account) {
+        toast.error('Please fill all required fields')
+        setLoading(false)
         return
-      } else {
-        let data = {
-          firstName,
-          lastName,
-          email,
-          password,
-          phone: phoneNumber,
-          wallet: account,
-          code: '132'
-        }
-        await dispatch(register(data))
       }
+
+      // The phone number should already be in the correct format from MuiTelInput
+      let data = {
+        firstName,
+        lastName,
+        email,
+        password,
+        phone: phoneNumber,
+        wallet: account,
+        code: '132'
+      }
+
+      console.log('Submitting data:', data) // For debugging
+      await dispatch(register(data))
     } catch (error) {
-      console.log('🚀 ~ file: index.js:149 ~ onSubmit ~ error:', error)
+      console.log('Registration error:', error)
+      toast.error(error.response?.data?.message || 'Registration failed. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
   const handlePhoneNumber = newValue => {
+    // MuiTelInput already formats the number in E.164 format
     setPhoneNumber(newValue)
+    console.log('Phone number:', newValue) // For debugging
   }
 
   const handleCheckboxChange = () => {
@@ -369,6 +374,11 @@ const Register = () => {
               value={phoneNumber}
               defaultCountry='NL'
               onChange={handlePhoneNumber}
+              forceCallingCode={true}
+              preferredCountries={['NL']}
+              format="international"
+              error={false}
+              helperText=""
             />
 
             <FormControlLabel

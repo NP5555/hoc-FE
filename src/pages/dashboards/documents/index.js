@@ -32,13 +32,19 @@ const Document = () => {
   const dispatch = useDispatch()
   const state = useSelector(state => state)
 
+  // Load documents when component mounts with pagination
   useEffect(() => {
-    dispatch(
-      fetchDocument({
-        token: state.reducer.userData.userData.token.accessToken
-      })
-    )
-  }, [dispatch, state.reducer.userData.userData.token.accessToken])
+    if (state.reducer.userData?.userData?.token?.accessToken) {
+      console.log('Loading initial documents data')
+      dispatch(
+        fetchDocument({
+          token: state.reducer.userData.userData.token.accessToken,
+          page: 1,
+          take: 10
+        })
+      )
+    }
+  }, [dispatch, state.reducer.userData?.userData?.token?.accessToken])
 
   const handleFilter = useCallback(val => {
     setValue(val)
@@ -54,7 +60,7 @@ const Document = () => {
     <Grid container spacing={6.5}>
       <Grid item xs={12}>
         <Card>
-          <CardHeader title='Search Filters' />
+          <CardHeader title='Documents' />
           <Divider sx={{ m: '0 !important' }} />
           <TableHeader
             value={value}
