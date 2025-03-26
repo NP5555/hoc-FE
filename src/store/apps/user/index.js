@@ -37,18 +37,52 @@ export const register = createAsyncThunk('appUsers/register', async data => {
   })
 
   try {
+    console.log('Sending registration data to API:', data)
+    
     const response = await fetch(`${BASE_URL_API}/auth/register`, {
       method: 'POST',
       body: formData
     })
+    
+    // Get response data regardless of status
+    const responseData = await response.json().catch(() => null)
+    console.log('Registration response:', response.status, responseData)
+    
     if (response.status === 200) {
       toast.success('Register Successfully')
       Router.push('/login')
+      return responseData
+    } else if (response.status === 422) {
+      // Handle validation errors
+      const validationErrors = responseData?.message || []
+      
+      // Display specific validation error messages
+      if (validationErrors.length > 0) {
+        const firstError = validationErrors[0]
+        const errorField = firstError.property
+        const errorConstraint = Object.values(firstError.constraints || {})[0]
+        
+        // Display specific error messages based on field
+        if (errorField === 'phone') {
+          toast.error('Invalid phone number format. Please enter a complete international phone number with country code.')
+        } else {
+          toast.error(`${errorField}: ${errorConstraint}`)
+        }
+      } else {
+        toast.error('Validation failed. Please check your inputs.')
+      }
+      
+      throw new Error('Validation error')
     } else {
-      toast.error('Registeration Failed')
+      // Handle other errors
+      const errorMessage = responseData?.message || 'Registration Failed'
+      toast.error(errorMessage)
+      throw new Error(errorMessage)
     }
   } catch (error) {
-    toast.error(error.message)
+    console.error('Registration error:', error)
+    toast.error(error.message || 'Registration Failed')
+    throw error
   }
 })
 

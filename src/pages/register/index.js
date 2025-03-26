@@ -95,6 +95,7 @@ const Register = () => {
   const [phoneNumber, setPhoneNumber] = useState()
   const [emailError, setEmailError] = useState('')
   const [passwordError, setPasswordError] = useState('')
+  const [phoneError, setPhoneError] = useState('')
   const [isChecked, setIsChecked] = useState(false)
 
   const [provider, setProvider] = useState(null)
@@ -134,6 +135,15 @@ const Register = () => {
         setLoading(false)
         return
       }
+      
+      // Validate phone number format
+      if (!phoneNumber || phoneNumber.length < 8) {
+        setPhoneError('Please enter a complete phone number')
+        toast.error('Please enter a complete phone number')
+        setLoading(false)
+        return
+      }
+      
       if (!firstName || !lastName || !email || !password || !phoneNumber || !isChecked || !account) {
         toast.error('Please fill all required fields')
         setLoading(false)
@@ -164,6 +174,16 @@ const Register = () => {
   const handlePhoneNumber = newValue => {
     // MuiTelInput already formats the number in E.164 format
     setPhoneNumber(newValue)
+    
+    // Clear any previous phone errors
+    setPhoneError('')
+    
+    // Simple validation to ensure it's a complete phone number
+    // A valid E.164 number must have at least a country code (1-3 digits) + at least 5 digits for the number
+    if (newValue && newValue.length < 8) {
+      setPhoneError('Please enter a complete phone number')
+    }
+    
     console.log('Phone number:', newValue) // For debugging
   }
 
@@ -375,10 +395,10 @@ const Register = () => {
               defaultCountry='NL'
               onChange={handlePhoneNumber}
               forceCallingCode={true}
-              preferredCountries={['NL']}
+              preferredCountries={['NL', 'PK', 'US', 'GB']}
               format="international"
-              error={false}
-              helperText=""
+              error={!!phoneError}
+              helperText={phoneError || "Enter full number including country code (e.g., +31612345678)"}
             />
 
             <FormControlLabel
