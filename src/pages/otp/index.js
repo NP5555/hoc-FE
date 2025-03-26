@@ -5,6 +5,7 @@ import { TextField, Button, Grid, Box, Typography, CircularProgress } from '@mui
 import BlankLayout from 'src/@core/layouts/BlankLayout'
 import Image from 'next/image'
 import { loginOTP } from 'src/store/apps/user'
+import { toast } from 'react-hot-toast'
 
 const OtpForm = () => {
   const [otp, setOtp] = useState(Array(6).fill(''))
@@ -48,14 +49,33 @@ const OtpForm = () => {
     event.preventDefault()
     try {
       setLoading(true)
-
+      
+      // Debug logging to check Redux state
+      console.log('Current Redux state:', state)
+      console.log('UserData:', state?.reducer?.userData?.userData)
+      
+      // Get access token from Redux store
+      const accessToken = state?.reducer?.userData?.userData?.token?.accessToken
+      
+      if (!accessToken) {
+        console.error('No access token found in Redux store')
+        toast.error('Authentication error. Please login again.')
+        setLoading(false)
+        return
+      }
+      
+      console.log('Using access token:', accessToken)
+      
       const data = {
         otp: parseInt(otp.join(''), 10),
-        token: state?.reducer?.userData?.userData?.token.accessToken
+        token: accessToken
       }
+      
+      console.log('Submitting OTP data:', data)
       await dispatch(loginOTP(data))
     } catch (error) {
-      console.log('🚀 ~ file: index.js:26 ~ handleSubmit ~ error:', error)
+      console.error('OTP submission error:', error)
+      toast.error(error.message || 'Error validating OTP')
     } finally {
       setLoading(false)
     }

@@ -7,7 +7,10 @@ const userData = createSlice({
   },
   reducers: {
     setUserData: (state, action) => {
-      state.userData = action.payload;
+      if (action.payload) {
+        console.log('Setting userData in store:', action.payload);
+        state.userData = action.payload;
+      }
     },
   },
 });

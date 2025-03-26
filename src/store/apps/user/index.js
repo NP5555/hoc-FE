@@ -263,13 +263,15 @@ export const login = createAsyncThunk('appUsers/register', async data => {
     })
     if (response.status === 404) {
       toast.error(response.statusText)
-    } else if (response.statusText === 'OK') {
+    } else if (response.status === 200) {
       response = await response.json()
-      if (response.user.isActive === false) {
+      console.log('Login response:', response) // For debugging
+      
+      if (response.user && response.user.isActive === false) {
         toast.error('Your account is disabled. Kindly contact the admin')
       } else {
         // If the user is an admin, ensure their KYC is auto-approved
-        if (response.user.role === 'ADMIN') {
+        if (response.user && response.user.role === 'ADMIN') {
           console.log('Admin user detected - ensuring KYC approval')
           try {
             // Use the new approveAdminKyc function to ensure admin KYC
@@ -288,56 +290,96 @@ export const login = createAsyncThunk('appUsers/register', async data => {
           }
         }
         
-        store.dispatch(setUserData(response))
+        // Store the user data and token in Redux store
+        store.dispatch(setUserData({
+          user: response.user,
+          token: response.token
+        }))
+        
+        // Get the appropriate OTP route based on user role
         const url = getOTPRoute(response.user.role)
-        toast.success('OTP sent to you email')
+        toast.success('OTP sent to your email')
+        
+        // Navigate to the OTP page
         Router.push(url)
       }
     }
   } catch (error) {
-    toast.error(error.message)
+    console.error('Login error:', error)
+    toast.error(error.message || 'An error occurred during login')
   }
 })
 
-// ** Login
+// ** Login OTP verification
 export const loginOTP = createAsyncThunk('appUsers/loginOTP', async data => {
   try {
+    console.log('Verifying OTP with data:', data)
+    
+    if (!data.token || !data.otp) {
+      console.error('Missing required data for OTP verification:', { token: !!data.token, otp: !!data.otp })
+      toast.error('Missing required authentication data')
+      return
+    }
+    
     let response = await fetch(`${BASE_URL_API}/auth/login/${data.otp}/${data.token}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       }
     })
-    response = await response.json()
-    console.log('🚀 ~ file: index.js:195 ~ loginOTP ~ response:', response)
-    if (response.status !== 200) {
-      toast.error(response.message)
-    } else {
-      if (response.data.user.isActive === false) {
-        toast.error('Your account is disabled. Kindly contact the admin')
-      } else {
-        try {
-          let kyc = await fetch(`${BASE_URL_API}/UserKYC/byId?page=1&take=1&userId=${response.data.user.id}`, {
-            method: 'GET', // *GET, POST, PUT, DELETE, etc.
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${response.token}`
-            }
-          })
-          kyc = await kyc.json()
-          kyc = kyc.data.data[0]
-          store.dispatch(setKyc(kyc))
-        } catch (error) {
-          store.dispatch(setKyc(null))
-        }
-        store.dispatch(setUserData(response.data))
-        const url = getHomeRoute(response.data.user.role)
-        toast.success(response.message)
-        Router.push(url)
-      }
+    
+    // Check HTTP status first
+    if (!response.ok) {
+      console.error('OTP verification failed with status:', response.status)
+      toast.error(`OTP verification failed: ${response.statusText}`)
+      return
     }
+    
+    const responseData = await response.json()
+    console.log('OTP verification response:', responseData)
+    
+    if (responseData.status !== 200) {
+      toast.error(responseData.message || 'OTP verification failed')
+      return
+    }
+    
+    if (responseData.data?.user?.isActive === false) {
+      toast.error('Your account is disabled. Kindly contact the admin')
+      return
+    }
+    
+    // Success path - get user KYC data if available
+    try {
+      let kyc = await fetch(`${BASE_URL_API}/UserKYC/byId?page=1&take=1&userId=${responseData.data.user.id}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${responseData.data.token}`
+        }
+      })
+      
+      kyc = await kyc.json()
+      
+      if (kyc.data?.data?.[0]) {
+        store.dispatch(setKyc(kyc.data.data[0]))
+      } else {
+        store.dispatch(setKyc(null))
+      }
+    } catch (kycError) {
+      console.error('Error fetching KYC data:', kycError)
+      store.dispatch(setKyc(null))
+    }
+    
+    // Store the verified user data in Redux
+    store.dispatch(setUserData(responseData.data))
+    
+    // Navigate to appropriate route based on user role
+    const url = getHomeRoute(responseData.data.user.role)
+    toast.success(responseData.message || 'Login successful')
+    Router.push(url)
   } catch (error) {
-    toast.error(error.message)
+    console.error('OTP verification error:', error)
+    toast.error(error.message || 'An error occurred during OTP verification')
   }
 })
 
@@ -449,7 +491,7 @@ export const updateStatus = createAsyncThunk('appUsers/updateStatus', async data
       body: JSON.stringify({ id: data.id, isActive: data.isActive })
     })
     response = await response.json()
-    console.log('🚀 ~ file: index.js:262 ~ updateStatus ~ response:', response)
+    console.log('�� ~ file: index.js:262 ~ updateStatus ~ response:', response)
     if (response.status === 200) {
       toast.success('Role Updated Successfully')
 

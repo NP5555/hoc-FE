@@ -26,6 +26,7 @@ import { useDispatch } from 'react-redux'
 import { useSelector } from 'react-redux'
 import BlankLayout from 'src/@core/layouts/BlankLayout'
 import FooterIllustrationsV2 from 'src/views/pages/auth/FooterIllustrationsV2'
+import { toast } from 'react-hot-toast'
 
 const LoginIllustration = styled('img')(({ theme }) => ({
   zIndex: 2,
@@ -99,8 +100,11 @@ const LoginPage = () => {
   const onSubmit = async data => {
     try {
       setLoading(true)
+      console.log('Submitting login data:', data)
       await dispatch(login(data))
     } catch (error) {
+      console.error('Login form submission error:', error)
+      toast.error(error.message || 'An error occurred during login')
     } finally {
       setLoading(false)
     }
