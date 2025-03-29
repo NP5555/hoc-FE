@@ -46,20 +46,55 @@ const Land = () => {
   const [data, setData] = useState('')
   const [addUserOpen, setAddUserOpen] = useState(false)
   const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 })
+  const [error, setError] = useState('')
 
   // ** Hooks
   const dispatch = useDispatch()
   const state = useSelector(state => state)
 
   useEffect(() => {
+    setError('');
+    
+    // Get user data and token from Redux store
+    const userData = state.reducer?.userData?.userData;
+    
+    if (!userData) {
+      setError('User data not available. Please log in again.');
+      return;
+    }
+    
+    const token = userData?.token?.accessToken;
+    if (!token) {
+      setError('Authentication token not found. Please log in again.');
+      return;
+    }
+    
+    // Get developer ID from user data
+    const developerId = userData?.user?.id;
+    if (!developerId) {
+      setError('Developer ID not found. Please ensure you have the correct permissions.');
+      return;
+    }
+    
+    console.log('Fetching types with developerId:', developerId);
+    
+    // Dispatch action with all required parameters
     dispatch(
       fetchType({
-        token: state.reducer.userData.userData.token.accessToken,
+        token,
         page: 1,
-        take: 10
+        take: 10,
+        developerId
       })
-    )
-  }, [dispatch, state.reducer.userData.userData.token.accessToken])
+    ).then(response => {
+      if (response?.error) {
+        setError(`Failed to load types: ${response.error}`);
+      }
+    }).catch(err => {
+      console.error('Error in fetchType:', err);
+      setError('An unexpected error occurred while loading types.');
+    });
+  }, [dispatch, state.reducer?.userData?.userData])
 
   const handleFilter = useCallback(val => {
     setValue(val)
@@ -91,7 +126,18 @@ const Land = () => {
             handleRoleChange={handleRoleChange}
             toggle={toggleAddTypeDrawer}
           />
-          <TypeTable />
+          
+          {error ? (
+            <Typography 
+              variant="body1" 
+              color="error" 
+              sx={{ p: 4, textAlign: 'center' }}
+            >
+              {error}
+            </Typography>
+          ) : (
+            <TypeTable />
+          )}
         </Card>
       </Grid>
 
