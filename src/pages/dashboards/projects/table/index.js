@@ -350,96 +350,173 @@ const ProjectTable = () => {
 
   // Load data from Redux store or show loading/spinner
   useEffect(() => {
-    if (
-      state.project?.projectData?.data === null ||
-      state?.types?.typesData?.data === null ||
-      state?.usersRecord?.userData === null
-    ) {
-      setType([])
-    } else if (state.project?.projectData?.data === 'Failed to load data') {
-      setType([])
-    } else if (state?.types?.typesData?.data === 'Failed to load data' || state?.types?.typesData?.data === null) {
-      setType([])
+    console.log('Project data in redux:', state.project?.projectData)
+    
+    // Check if we have valid project data to display
+    if (state.project?.projectData?.data && Array.isArray(state.project.projectData.data)) {
+      console.log('Setting project data:', state.project.projectData.data.length, 'records')
+      setData(state.project.projectData.data)
+      
+      // If we have projects but no signer, initialize empty earnings
+      if (state.project.projectData.data.length > 0 && (!state?.signer?.signer || !state.signer.signer.provider)) {
+        console.log('No wallet connected, initializing empty earnings')
+        setTotalProjectEarnings(state.project.projectData.data.map(() => ({
+          nftCoinBalance: 0,
+          saleCoinBalance: 0,
+          totalCoins: 0,
+          nftTokenBalance: 0,
+          saleTokenBalance: 0,
+          totalTokens: 0
+        })))
+      }
+      
+      // Also load types and agent data if available
+      if (state?.types?.typesData?.data && Array.isArray(state.types.typesData.data)) {
+        setType(state.types.typesData.data)
+      }
+      
+      if (state?.usersRecord?.userData && Array.isArray(state.usersRecord.userData)) {
+        const filteredUsers = state.usersRecord.userData.filter(user => user.role === 'AGENT')
+        setAgent(filteredUsers)
+      }
     } else {
-      setData(state?.project?.projectData?.data)
-      setType(state?.types?.typesData?.data)
-      const users = state?.usersRecord?.userData || []
-      const filteredUsers = users.filter(user => user.role === 'AGENT')
-      setAgent(filteredUsers)
+      // Set empty data when no valid project data is found
+      console.log('No valid project data found in Redux')
+      setData([])
     }
-  }, [state.project?.projectData?.data, state?.types?.typesData?.data, state?.usersRecord?.userData])
+  }, [state.project?.projectData, state?.types?.typesData?.data, state?.usersRecord?.userData, state?.signer?.signer])
 
+  // Initialize earnings for projects (only when projects data exists)
   useEffect(() => {
-    if (data && signer) {
+    if (data && Array.isArray(data) && data.length > 0) {
+      console.log('Initializing earnings for', data.length, 'projects')
+      
+      // Check if signer is available
+      if (!signer || !signer.provider) {
+        console.warn('Wallet signer not available, using zero balances for earnings')
+        // If no signer is available, we'll still provide default earnings values
+        setTotalProjectEarnings(data.map(() => ({
+          nftCoinBalance: 0,
+          saleCoinBalance: 0,
+          totalCoins: 0,
+          nftTokenBalance: 0,
+          saleTokenBalance: 0,
+          totalTokens: 0
+        })))
+        return
+      }
+      
       const getTotalEarnings = async () => {
         let balance = []
+        let calculationFailed = false
 
-        for (const totalProjects of data) {
-          let totalTokens
-          if (!totalProjects.currency.isNative) {
-            const HOCToken = new ethers.Contract(totalProjects.currency?.tokenAddress, HocToken, signer)
-            const nftTokenBalance = Number(ethers.utils.formatUnits(await HOCToken.balanceOf(totalProjects.nftAddress)))
-
-            const saleTokenBalance = Number(
-              ethers.utils.formatUnits(await HOCToken.balanceOf(totalProjects.saleAddress))
-            )
-            totalTokens = saleTokenBalance + nftTokenBalance
-
-            const nftCoinBalance = Number(
-              ethers.utils.formatUnits(await signer.provider.getBalance(totalProjects.nftAddress))
-            )
-
-            const saleCoinBalance = Number(
-              ethers.utils.formatUnits(await signer.provider.getBalance(totalProjects.saleAddress))
-            )
-
-            const totalCoins = saleCoinBalance + nftCoinBalance
-
-            balance.push({
-              nftTokenBalance,
-              saleTokenBalance,
-              nftCoinBalance,
-              saleCoinBalance,
-              totalTokens,
-              totalCoins
-            })
-          } else {
-            const nftCoinBalance = Number(
-              ethers.utils.formatUnits(await signer.provider.getBalance(totalProjects.nftAddress))
-            )
-
-            const saleCoinBalance = Number(
-              ethers.utils.formatUnits(await signer.provider.getBalance(totalProjects.saleAddress))
-            )
-            const totalCoins = saleCoinBalance + nftCoinBalance
-            console.log('🚀 ~ file: index.js:364 ~ getTotalEarnings ~ totalCoins:', totalCoins)
-            console.log({
-              nftCoinBalance,
-              saleCoinBalance,
-              totalCoins
-            })
-            balance.push({
-              nftCoinBalance,
-              saleCoinBalance,
-              totalCoins
-            })
+        try {
+          for (const totalProjects of data) {
+            let earnings = {
+              nftCoinBalance: 0,
+              saleCoinBalance: 0,
+              totalCoins: 0,
+              nftTokenBalance: 0,
+              saleTokenBalance: 0,
+              totalTokens: 0
+            }
+            
+            if (totalProjects.currency && !totalProjects.currency.isNative) {
+              // Handle token balances for non-native currencies
+              try {
+                if (totalProjects.currency?.tokenAddress) {
+                  const HOCToken = new ethers.Contract(totalProjects.currency.tokenAddress, HocToken, signer)
+                  
+                  earnings.nftTokenBalance = Number(
+                    ethers.utils.formatUnits(await HOCToken.balanceOf(totalProjects.nftAddress))
+                  )
+                  
+                  earnings.saleTokenBalance = Number(
+                    ethers.utils.formatUnits(await HOCToken.balanceOf(totalProjects.saleAddress))
+                  )
+                  
+                  earnings.totalTokens = earnings.saleTokenBalance + earnings.nftTokenBalance
+                }
+              } catch (error) {
+                console.error('Error fetching token balances:', error)
+              }
+            }
+            
+            // Always try to get ETH balances
+            try {
+              if (totalProjects.nftAddress && totalProjects.saleAddress) {
+                earnings.nftCoinBalance = Number(
+                  ethers.utils.formatUnits(await signer.provider.getBalance(totalProjects.nftAddress))
+                )
+                
+                earnings.saleCoinBalance = Number(
+                  ethers.utils.formatUnits(await signer.provider.getBalance(totalProjects.saleAddress))
+                )
+                
+                earnings.totalCoins = earnings.saleCoinBalance + earnings.nftCoinBalance
+              }
+            } catch (error) {
+              console.error('Error fetching ETH balances:', error)
+              calculationFailed = true
+            }
+            
+            balance.push(earnings)
           }
+          
+          if (calculationFailed) {
+            // If we had errors, still provide fallback data
+            console.warn('Some earnings calculations failed, using fallback values')
+          }
+          
+          setTotalProjectEarnings(balance)
+        } catch (error) {
+          console.error('Error in getTotalEarnings:', error)
+          // Initialize with empty earnings objects to match data length
+          setTotalProjectEarnings(data.map(() => ({
+            nftCoinBalance: 0,
+            saleCoinBalance: 0,
+            totalCoins: 0,
+            nftTokenBalance: 0,
+            saleTokenBalance: 0,
+            totalTokens: 0
+          })))
         }
-        setTotalProjectEarnings(balance)
       }
+      
+      // Set a timeout to prevent infinite loading if the calculations take too long
+      const timeoutId = setTimeout(() => {
+        if (totalProjectEarnings.length === 0) {
+          console.warn('Earnings calculation timeout, using default values')
+          setTotalProjectEarnings(data.map(() => ({
+            nftCoinBalance: 0,
+            saleCoinBalance: 0,
+            totalCoins: 0,
+            nftTokenBalance: 0,
+            saleTokenBalance: 0,
+            totalTokens: 0
+          })))
+        }
+      }, 5000) // 5 seconds timeout
+      
       getTotalEarnings()
+      
+      // Clear timeout on cleanup
+      return () => clearTimeout(timeoutId)
+    } else {
+      // No projects data or not connected to wallet
+      setTotalProjectEarnings([])
     }
   }, [data, signer])
 
   return (
     <>
-      {!data || totalProjectEarnings.length === 0 ? (
+      {isLoading ? (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '30px' }}>
+          <CircularProgress />
+        </div>
+      ) : !data || !Array.isArray(data) || data.length === 0 ? (
         <Typography align='center' sx={{ paddingTop: '15px', paddingBottom: '15px' }}>
-          Record not found
-        </Typography>
-      ) : data?.length === 0 && totalProjectEarnings?.length === 0 ? (
-        <Typography align='center' sx={{ paddingTop: '15px', paddingBottom: '15px' }}>
-          Record not found
+          No projects found. Create a new project to get started.
         </Typography>
       ) : (
         <>
@@ -458,82 +535,105 @@ const ProjectTable = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {data.slice().map((row, index) => (
-                <TableRow key={row.id}>
-                  <TableCell align='center'>{row.name}</TableCell>
-                  <TableCell align='center'>
-                    <a
-                      href={`https://polygonscan.com/address/${row.nftAddress}`}
-                      target='_blank'
-                      rel='noopener noreferrer'
-                      className={classes.link}
-                    >
-                      {row.nftAddress.slice(0, 5) +
-                        '...' +
-                        row.nftAddress.slice(row.nftAddress.length - 5, row.nftAddress.length - 1)}
-                    </a>
-                  </TableCell>
-                  <TableCell align='center'>
-                    <a
-                      href={`https://polygonscan.com/address/${row.saleAddress}`}
-                      target='_blank'
-                      rel='noopener noreferrer'
-                      className={classes.link}
-                    >
-                      {row.saleAddress.slice(0, 5) +
-                        '...' +
-                        row.saleAddress.slice(row.saleAddress.length - 5, row.saleAddress.length - 1)}
-                    </a>
-                  </TableCell>
-                  {/* <TableCell align='center'>{row.description}</TableCell> */}
-                  <TableCell align='center'>
-                    {row.price} {row.currency.name}
-                  </TableCell>
-                  <TableCell align='center'>{row.category.name}</TableCell>
-                  <TableCell align='center'>{row.status}</TableCell>
-                  <TableCell align='center'>
-                    <Button onClick={() => handleAddLandMetadata(row)} variant='outlined'>
-                      <Icon fontSize='1.125rem' icon='carbon:add-filled' />
-                    </Button>
-                  </TableCell>
-                  <TableCell align='center'>
-                    {totalProjectEarnings[index].totalCoins >= 0
-                      ? `${totalProjectEarnings[index].totalCoins} ${row.currency.name}`
-                      : `${totalProjectEarnings[index].totalTokens} ${row.currency.name}`}
-                  </TableCell>
-                  <TableCell align='center'>
-                    {earningLoader ? (
-                      <CircularProgress size={20} />
-                    ) : (
-                      <>
-                        {totalProjectEarnings[index].totalCoins === 0 ||
-                        totalProjectEarnings[index]?.totalTokens === 0 ? (
-                          <Button onClick={() => withdrawAmount(row, earnings)} variant='outlined' disabled>
+              {data.map((row, index) => {
+                // Check if earnings calculations are complete
+                const earningsCalculated = totalProjectEarnings.length > 0;
+                
+                // Ensure we have earnings data for this index
+                const earnings = (earningsCalculated && index < totalProjectEarnings.length) 
+                  ? totalProjectEarnings[index] 
+                  : { totalCoins: 0, totalTokens: 0 };
+                  
+                return (
+                  <TableRow key={row.id}>
+                    <TableCell align='center'>{row.name}</TableCell>
+                    <TableCell align='center'>
+                      <a
+                        href={`https://polygonscan.com/address/${row.nftAddress}`}
+                        target='_blank'
+                        rel='noopener noreferrer'
+                        className={classes.link}
+                      >
+                        {row.nftAddress.slice(0, 5) +
+                          '...' +
+                          row.nftAddress.slice(row.nftAddress.length - 5, row.nftAddress.length - 1)}
+                      </a>
+                    </TableCell>
+                    <TableCell align='center'>
+                      <a
+                        href={`https://polygonscan.com/address/${row.saleAddress}`}
+                        target='_blank'
+                        rel='noopener noreferrer'
+                        className={classes.link}
+                      >
+                        {row.saleAddress.slice(0, 5) +
+                          '...' +
+                          row.saleAddress.slice(row.saleAddress.length - 5, row.saleAddress.length - 1)}
+                      </a>
+                    </TableCell>
+                    <TableCell align='center'>
+                      {row.price} {row.currency?.name || ''}
+                    </TableCell>
+                    <TableCell align='center'>{row.category?.name || ''}</TableCell>
+                    <TableCell align='center'>{row.status}</TableCell>
+                    <TableCell align='center'>
+                      <Button onClick={() => handleAddLandMetadata(row)} variant='outlined'>
+                        <Icon fontSize='1.125rem' icon='carbon:add-filled' />
+                      </Button>
+                    </TableCell>
+                    <TableCell align='center'>
+                      {!earningsCalculated ? (
+                        <Typography variant="body2" color="textSecondary">
+                          Calculating...
+                        </Typography>
+                      ) : (
+                        earnings.totalCoins >= 0
+                          ? `${earnings.totalCoins} ${row.currency?.name || ''}`
+                          : `${earnings.totalTokens} ${row.currency?.name || ''}`
+                      )}
+                    </TableCell>
+                    <TableCell align='center'>
+                      {earningLoader ? (
+                        <CircularProgress size={20} />
+                      ) : (
+                        <>
+                          <Button 
+                            onClick={() => withdrawAmount(row, earnings)} 
+                            variant='outlined'
+                            disabled={!earningsCalculated || earnings.totalCoins === 0 || earnings.totalTokens === 0}
+                          >
                             <Icon fontSize='1.125rem' icon='uil:money-withdrawal' />
                           </Button>
-                        ) : (
-                          <Button onClick={() => withdrawAmount(row, earnings)} variant='outlined'>
-                            <Icon fontSize='1.125rem' icon='uil:money-withdrawal' />
-                          </Button>
-                        )}
-                      </>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
+                        </>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
-          <Pagination
-            style={{
-              display: 'flex',
-              justifyContent: 'center',
-              paddingTop: '20px',
-              paddingBottom: '20px'
-            }}
-            count={state.project?.projectData?.meta?.pageCount} // Use the correct property to get the total number of pages
-            page={page}
-            onChange={handlePagination}
-          />
+          {state.project?.projectData?.meta?.pageCount > 1 && (
+            <Pagination
+              style={{
+                display: 'flex',
+                justifyContent: 'center',
+                paddingTop: '20px',
+                paddingBottom: '20px'
+              }}
+              count={state.project?.projectData?.meta?.pageCount || 1}
+              page={page}
+              onChange={handlePagination}
+            />
+          )}
+          
+          {totalProjectEarnings.length === 0 && (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '10px' }}>
+              <CircularProgress size={20} />
+              <Typography variant="body2" color="textSecondary" sx={{ ml: 1 }}>
+                Calculating earnings...
+              </Typography>
+            </div>
+          )}
         </>
       )}
 
@@ -636,17 +736,25 @@ const ProjectTable = () => {
               onChange={handleAgentChange}
               fullWidth
             >
-              {agent.map(option => (
-                <MenuItem key={option.id} value={option.id}>
-                  {option.firstName} {option.lastName}
-                </MenuItem>
-              ))}
+              {Array.isArray(agent) && agent.length > 0 ? (
+                agent.map(option => (
+                  <MenuItem key={option.id} value={option.id}>
+                    {option.firstName} {option.lastName}
+                  </MenuItem>
+                ))
+              ) : (
+                <MenuItem disabled>No agents available</MenuItem>
+              )}
             </Select>
           </FormControl>
         </DialogContent>
 
-        {!type ? (
-          <Spinner />
+        {!type || !Array.isArray(type) || type.length === 0 ? (
+          <DialogContent>
+            <Typography color="error" align="center">
+              No types available. Please create types first.
+            </Typography>
+          </DialogContent>
         ) : (
           <DialogContent>
             <FormControl fullWidth>
@@ -675,7 +783,12 @@ const ProjectTable = () => {
           ) : (
             <>
               <Button onClick={handleAddLandDialogClose}>Cancel</Button>
-              <Button type='submit' color='success' onClick={() => handleAddLand(data)}>
+              <Button 
+                type='submit' 
+                color='success' 
+                onClick={() => handleAddLand(data)}
+                disabled={!params.type || !params.agent || !params.startTokenId || !params.count}
+              >
                 Submit
               </Button>
             </>

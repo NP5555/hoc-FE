@@ -70,16 +70,76 @@ const HomePage = () => {
     // setSuccessText(`Success! You selected "${nftAddress}" and entered "${tokenId}".`)
   }
 
-  const getNortary = async () => {
-    await fetch(`${BASE_URL_API}/trade/nortary?tokenId=${tokenId}&nftAddress=${nftAddress}`)
-      .then(response => response.json())
-      .then(data => {
-        setNortaryData(data.data.user)
-        setTransactionHashes(data.data.transactions)
-      })
-      .catch(error => {
-        console.log('🚀 ~ file: index.js:59 ~ getNortary ~ error:', error)
-      })
+  const getNortary = async (e) => {
+    setNortaryData(null);
+    setTransactionHashes([]);
+    
+    // Get authentication token
+    const token = localStorage.getItem('accessToken');
+    if (!token) {
+      setSuccessText('Authentication error: Please log in again');
+      return;
+    }
+    
+    // Validate required fields
+    if (!tokenId) {
+      setSuccessText('Please enter a Property ID');
+      return;
+    }
+    
+    if (!nftAddress) {
+      setSuccessText('Please select a project');
+      return;
+    }
+    
+    setSuccessText('Searching...');
+    
+    try {
+      // Log the request for debugging
+      console.log(`Fetching notary data for tokenId: ${tokenId}, nftAddress: ${nftAddress}`);
+      
+      const response = await fetch(
+        `${BASE_URL_API}/trade/nortary?tokenId=${tokenId}&nftAddress=${nftAddress}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer ' + token
+          }
+        }
+      );
+      
+      console.log('Response status:', response.status);
+      
+      // Handle different response statuses
+      if (response.status === 404) {
+        setSuccessText('No property records found with the provided details');
+        return;
+      }
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `Error ${response.status}: Failed to fetch property data`);
+      }
+      
+      const result = await response.json();
+      
+      // Check if we have data
+      if (result && result.data) {
+        setNortaryData(result.data.user || {});
+        setTransactionHashes(result.data.transactions || []);
+        setSuccessText('');
+      } else {
+        setNortaryData({});
+        setTransactionHashes([]);
+        setSuccessText('No data found for this property');
+      }
+    } catch (error) {
+      console.error('Error fetching notary data:', error);
+      setSuccessText(`Error: ${error.message || 'Failed to fetch property data'}`);
+      setNortaryData(null);
+      setTransactionHashes([]);
+    }
   }
 
   const formatDate = isoDate => {
@@ -96,6 +156,16 @@ const HomePage = () => {
 
   return (
     <Container maxWidth='sm' style={{ textAlign: 'center', marginTop: '50px' }}>
+      <Typography variant="h4" gutterBottom>
+        Property Notary Information
+      </Typography>
+      <Typography variant="body1" paragraph>
+        Search for property details and transaction history by selecting a project and entering a property ID. This tool allows you to verify ownership records and transaction history for any property in the system.
+      </Typography>
+      <Typography variant="body2" color="textSecondary" paragraph>
+        Note: You must be logged in to access property records. If no results are found, it may indicate that the property doesn't exist or hasn't been registered in the system yet.
+      </Typography>
+      
       <form onSubmit={handleFormSubmit}>
         <div>
           <TextField
@@ -105,26 +175,41 @@ const HomePage = () => {
             value={nftAddress}
             onChange={handleDropdownChange}
             style={{ minWidth: '200px', marginRight: '16px' }}
+            error={!nftAddress}
+            helperText={!nftAddress ? 'Required' : ''}
           >
-            {data.map(option => (
-              <MenuItem key={option.id} value={option.nftAddress}>
-                {option.name}
-              </MenuItem>
-            ))}
+            {data && data.length > 0 ? (
+              data.map(option => (
+                <MenuItem key={option.id} value={option.nftAddress}>
+                  {option.name}
+                </MenuItem>
+              ))
+            ) : (
+              <MenuItem disabled>No projects available</MenuItem>
+            )}
           </TextField>
           <TextField
-            label='Enter Property '
+            label='Enter Property ID'
             type='number'
             variant='outlined'
             value={tokenId}
             onChange={handleInputChange}
             style={{ minWidth: '200px' }}
+            error={tokenId === ''}
+            helperText={tokenId === '' ? 'Required' : ''}
           />
         </div>
-        <Button type='submit' variant='contained' color='primary' style={{ marginTop: '16px' }}>
+        <Button 
+          type='submit' 
+          variant='contained' 
+          color='primary' 
+          style={{ marginTop: '16px' }}
+          disabled={!nftAddress || tokenId === ''}
+        >
           Search
         </Button>
       </form>
+      
       {successText && (
         <Typography variant='h6' style={{ marginTop: '16px', color: 'green' }}>
           {successText}
@@ -133,9 +218,15 @@ const HomePage = () => {
 
       {nortaryData ? (
         <>
-          {Object.entries(nortaryData).length > 0 && (
+          {Object.entries(nortaryData).length > 0 ? (
             <TableContainer component={Paper} style={{ marginTop: '20px' }}>
               <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell><strong>Property Information</strong></TableCell>
+                    <TableCell><strong>Value</strong></TableCell>
+                  </TableRow>
+                </TableHead>
                 <TableBody>
                   {Object.entries(nortaryData).map(([key, value]) => (
                     <TableRow key={key}>
@@ -146,49 +237,53 @@ const HomePage = () => {
                 </TableBody>
               </Table>
             </TableContainer>
-          )}
+          ) : tokenId && nftAddress && !successText ? (
+            <Paper style={{ padding: '20px', marginTop: '20px' }}>
+              <Typography variant="body1" color="textSecondary">
+                No property information found. Please verify the property ID and try again.
+              </Typography>
+            </Paper>
+          ) : null}
 
-          {transactionHashes.length > 0 && (
+          {transactionHashes && transactionHashes.length > 0 ? (
             <TableContainer component={Paper} style={{ marginTop: '20px' }}>
               <Table>
                 <TableHead>
                   <TableRow>
-                    <TableCell align='center'>Transaction Hash</TableCell>
-                    <TableCell align='center'>Action</TableCell>
-                    <TableCell align='center'>Date</TableCell>
+                    <TableCell align='center'><strong>Transaction Hash</strong></TableCell>
+                    <TableCell align='center'><strong>Action</strong></TableCell>
+                    <TableCell align='center'><strong>Date</strong></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {transactionHashes.slice().map((row, index) => (
-                    <TableRow key={row.id}>
+                  {transactionHashes.map((hash, index) => (
+                    <TableRow key={index}>
                       <TableCell align='center'>
-                        <a
-                          href={`https://polygonscan.com/tx/${row.transactionHash}`}
-                          target='_blank'
-                          rel='noopener noreferrer'
+                        <a 
+                          href={`https://polygonscan.com/tx/${hash.hash}`} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
                           className={classes.link}
                         >
-                          {row.transactionHash.slice(0, 8) +
-                            '...' +
-                            row.transactionHash.slice(row.transactionHash.length - 10, row.transactionHash.length - 1)}
+                          {hash.hash.slice(0, 8)}...{hash.hash.slice(-8)}
                         </a>
                       </TableCell>
-                      <TableCell align='center'>{row.tag.toUpperCase()}</TableCell>
-                      <TableCell align='center'>{formatDate(row.createdAt)}</TableCell>
+                      <TableCell align='center'>{hash.action || 'Transaction'}</TableCell>
+                      <TableCell align='center'>{formatDate(hash.createdAt)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             </TableContainer>
-          )}
+          ) : successText ? (
+            <Paper style={{ padding: '20px', marginTop: '20px' }}>
+              <Typography variant="body1" color="textSecondary">
+                No transaction history found for this property.
+              </Typography>
+            </Paper>
+          ) : null}
         </>
-      ) : (
-        <>
-          <TableContainer component={Paper} style={{ marginTop: '20px' }}>
-            <p>Record not found</p>
-          </TableContainer>
-        </>
-      )}
+      ) : null}
     </Container>
   )
 }

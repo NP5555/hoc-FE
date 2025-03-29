@@ -27,6 +27,7 @@ const DeveloperTable = () => {
   const [anchorEl, setAnchorEl] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
   const [selectedRowId, setSelectedRowId] = useState(null)
+  const [meta, setMeta] = useState(null)
 
   const state = useSelector(state => state)
   const dispatch = useDispatch()
@@ -44,6 +45,7 @@ const DeveloperTable = () => {
       response = await response.json()
       if (response.status === 200) {
         setData(response.data.data)
+        setMeta(response.data.meta)
       } else {
         setData(response.message)
       }
@@ -132,7 +134,11 @@ const DeveloperTable = () => {
                   <TableCell align='center'>{row.phone}</TableCell>
                   <TableCell align='center'>{row.role}</TableCell>
                   <TableCell align='center'>
-                    {row.wallet.slice(0, 5) + '...' + row.wallet.slice(row.wallet.length - 5, row.wallet.length - 1)}
+                    {row.wallet ? (
+                      row.wallet.slice(0, 5) + '...' + row.wallet.slice(row.wallet.length - 5, row.wallet.length - 1)
+                    ) : (
+                      'Not Set'
+                    )}
                   </TableCell>
                   {row.isActive ? (
                     <TableCell align='center'>
@@ -174,7 +180,7 @@ const DeveloperTable = () => {
           paddingTop: '20px',
           paddingBottom: '20px'
         }}
-        count={state?.types?.typesData?.meta?.pageCount}
+        count={meta?.pageCount || 1}
         page={page}
         onChange={handleChange}
       />

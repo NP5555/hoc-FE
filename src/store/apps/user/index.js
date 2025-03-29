@@ -868,23 +868,95 @@ export const updateProject = createAsyncThunk('appUsers/updateProject', async da
 // ** Fetch Project
 export const fetchProject = createAsyncThunk('appUsers/fetchProject', async data => {
   try {
-    let response = await fetch(
-      `${BASE_URL_API}/project?page=${data.page}&take=${data.take}&developerId=${data.developerId}`,
-      {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${data.token}`
-        }
+    // Validate developerId
+    if (!data.developerId) {
+      console.error('Developer ID is missing:', data);
+      store.dispatch(setProject({ 
+        data: [], 
+        meta: { 
+          totalItems: 0, 
+          itemCount: 0, 
+          itemsPerPage: data.take || 10, 
+          totalPages: 0, 
+          currentPage: data.page || 1 
+        } 
+      }));
+      toast.error('Developer ID is required');
+      return;
+    }
+
+    console.log('Fetching projects with params:', { 
+      page: data.page, 
+      take: data.take, 
+      developerId: data.developerId,
+      baseUrl: BASE_URL_API 
+    });
+
+    const url = `${BASE_URL_API}/project/developerId?page=${data.page}&take=${data.take}&developerId=${data.developerId}`;
+    console.log('Full request URL:', url);
+
+    let response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${data.token}`
       }
-    )
-    response = await response.json()
-    if (response.status === 200) {
-      store.dispatch(setProject(response.data))
+    });
+
+    console.log('Response status:', response.status);
+
+    // Handle non-200 responses
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => null);
+      console.error('Project fetch error:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorData
+      });
+      
+      // Handle 404 specially
+      if (response.status === 404) {
+        const emptyData = {
+          data: [], 
+          meta: { 
+            totalItems: 0, 
+            itemCount: 0, 
+            itemsPerPage: data.take || 10, 
+            totalPages: 0, 
+            currentPage: data.page || 1 
+          } 
+        };
+        store.dispatch(setProject(emptyData));
+        toast.error('No projects found for this developer');
+        return;
+      }
+      
+      throw new Error(errorData?.message || 'Failed to fetch projects');
+    }
+
+    const responseData = await response.json();
+    console.log('Project fetch response:', responseData);
+
+    // The response format is { status, message, data: { data: [], meta: {} } }
+    // We need to dispatch the data object which contains both data array and meta
+    if (responseData.status === 200) {
+      store.dispatch(setProject(responseData.data));
     } else {
-      store.dispatch(setProject(response.message))
+      throw new Error(responseData.message || 'Failed to load projects');
     }
   } catch (error) {
-    store.dispatch(setProject('Failed to load data'))
+    console.error('Error in fetchProject:', error);
+    store.dispatch(setProject({ 
+      data: [], 
+      meta: { 
+        totalItems: 0, 
+        itemCount: 0, 
+        itemsPerPage: data.take || 10, 
+        totalPages: 0, 
+        currentPage: data.page || 1 
+      } 
+    }));
+    toast.error(error.message || 'Failed to load projects');
   }
 })
 
@@ -902,9 +974,11 @@ export const fetchProjects = createAsyncThunk('appUsers/fetchProjects', async da
       store.dispatch(setProject(response.data))
     } else {
       store.dispatch(setProject(response.message))
+      toast.error(response.message || 'Failed to load projects')
     }
   } catch (error) {
     store.dispatch(setProject([null]))
+    toast.error(error.message || 'Failed to load projects')
   }
 })
 
@@ -928,10 +1002,14 @@ export const deleteProject = createAsyncThunk('appUsers/deleteProject', async da
         }
       })
       response = await response.json()
-      store.dispatch(setProject(response.data))
+      if (response.status === 200) {
+        store.dispatch(setProject(response.data))
+      } else {
+        toast.error(response.message || 'Failed to load projects after delete')
+      }
     }
   } catch (error) {
-    toast.error(error.message)
+    toast.error(error.message || 'Failed to delete project')
   }
 })
 
@@ -1008,21 +1086,106 @@ export const addType = createAsyncThunk('appUsers/addType', async data => {
 // ** Fetch Type
 export const fetchType = createAsyncThunk('appUsers/fetchType', async data => {
   try {
-    let response = await fetch(`${BASE_URL_API}/type?page=${data.page}&take=${data.take}`, {
+    // Validate required parameters
+    if (!data.token) {
+      console.error('Token is required for fetchType');
+      store.dispatch(setTypes({
+        data: [], 
+        meta: { 
+          totalItems: 0, 
+          itemCount: 0, 
+          itemsPerPage: data.take || 10, 
+          totalPages: 0, 
+          currentPage: data.page || 1 
+        } 
+      }));
+      return { error: 'Token is required' };
+    }
+
+    console.log('Fetching types with params:', { 
+      page: data.page, 
+      take: data.take,
+      developerId: data.developerId, 
+      baseUrl: BASE_URL_API 
+    });
+
+    // Construct the URL - include developerId as a parameter if it's provided
+    let url = `${BASE_URL_API}/type?page=${data.page}&take=${data.take}`;
+    if (data.developerId) {
+      url += `&developerId=${data.developerId}`;
+    }
+    
+    console.log('Full request URL for types:', url);
+
+    let response = await fetch(url, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${data.token}`
       }
-    })
-    response = await response.json()
-    if (response.status === 200) {
-      store.dispatch(setTypes(response.data))
+    });
+
+    console.log('Types response status:', response.status);
+
+    // Handle non-200 responses
+    if (!response.ok) {
+      // Handle 404 specially
+      if (response.status === 404) {
+        console.log('No types found (404), returning empty data');
+        const emptyData = { 
+          data: [], 
+          meta: { 
+            totalItems: 0, 
+            itemCount: 0, 
+            itemsPerPage: data.take || 10, 
+            totalPages: 0, 
+            currentPage: data.page || 1 
+          } 
+        };
+        store.dispatch(setTypes(emptyData));
+        return emptyData;
+      }
+      
+      // For other errors
+      const errorText = await response.text().catch(() => 'Unknown error');
+      console.error(`Error ${response.status} fetching types:`, errorText);
+      
+      store.dispatch(setTypes({
+        data: [], 
+        meta: { 
+          totalItems: 0, 
+          itemCount: 0, 
+          itemsPerPage: data.take || 10, 
+          totalPages: 0, 
+          currentPage: data.page || 1 
+        } 
+      }));
+      return { error: errorText };
+    }
+
+    const responseData = await response.json();
+    console.log('Types fetch response data:', responseData);
+
+    if (responseData.status === 200) {
+      store.dispatch(setTypes(responseData.data));
+      return responseData.data;
     } else {
-      store.dispatch(setTypes(response.message))
+      store.dispatch(setTypes(responseData.message || 'Failed to load types'));
+      return { error: responseData.message || 'Failed to load types' };
     }
   } catch (error) {
-    toast.error(error.message) // toast.error(error.message)
+    console.error('Exception in fetchType:', error);
+    store.dispatch(setTypes({
+      data: [], 
+      meta: { 
+        totalItems: 0, 
+        itemCount: 0, 
+        itemsPerPage: data.take || 10, 
+        totalPages: 0, 
+        currentPage: data.page || 1 
+      } 
+    }));
+    return { error: error.message || 'Failed to load types' };
   }
 })
 
@@ -1079,27 +1242,72 @@ export const addLand = createAsyncThunk('appUsers/land', async data => {
 // ** Fetch Agent Land
 export const fetchAgentLand = createAsyncThunk('appUsers/fetchAgentLand', async data => {
   try {
+    console.log('Fetching agent land data with params:', { page: data.page, take: data.take });
+    
     let response = await fetch(`${BASE_URL_API}/agent-land?page=${data.page}&take=${data.take}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${data.token}`
       }
-    })
-    response = await response.json()
+    });
+    
+    // Log response status for debugging
+    console.log('Agent land fetch response status:', response.status);
     
     // Handle 404 errors gracefully
-    if (response.statusCode === 404) {
-      console.log('Agent Land API returned 404, using empty data')
-      const emptyData = { items: [], meta: { totalItems: 0, itemCount: 0, itemsPerPage: data.take, totalPages: 0, currentPage: data.page } }
-      store.dispatch(setAgentLand(emptyData))
-    } else if (response.status === 200) {
-      store.dispatch(setAgentLand(response.data))
+    if (response.status === 404) {
+      console.log('Agent Land API returned 404, using empty data');
+      const emptyData = { 
+        data: [], 
+        meta: { 
+          totalItems: 0, 
+          itemCount: 0, 
+          itemsPerPage: data.take || 10, 
+          totalPages: 0, 
+          currentPage: data.page || 1 
+        } 
+      };
+      store.dispatch(setAgentLand(emptyData));
+      return;
+    }
+    
+    const responseData = await response.json();
+    console.log('Agent land fetch response:', responseData);
+    
+    if (responseData.status === 200) {
+      store.dispatch(setAgentLand(responseData.data));
     } else {
-      store.dispatch(setAgentLand(response.message))
+      // Handle other error cases
+      console.error('Error fetching agent land:', responseData.message);
+      store.dispatch(setAgentLand({ 
+        data: [], 
+        meta: { 
+          totalItems: 0, 
+          itemCount: 0, 
+          itemsPerPage: data.take || 10, 
+          totalPages: 0, 
+          currentPage: data.page || 1 
+        } 
+      }));
+      // Only show error toast for non-404 errors
+      if (responseData.message !== 'Failed to load data') {
+        toast.error(responseData.message || 'Failed to load agent land data');
+      }
     }
   } catch (error) {
-    toast.error(error.message)
+    console.error('Exception in fetchAgentLand:', error);
+    store.dispatch(setAgentLand({ 
+      data: [], 
+      meta: { 
+        totalItems: 0, 
+        itemCount: 0, 
+        itemsPerPage: data.take || 10, 
+        totalPages: 0, 
+        currentPage: data.page || 1 
+      } 
+    }));
+    toast.error(error.message || 'Failed to load agent land data');
   }
 })
 
