@@ -47,10 +47,16 @@ const UsersTable = () => {
     if (!state?.usersRecord?.userData) {
       return <Spinner />
     } else if (state?.reducer?.userData?.userData?.user?.role !== 'ADMIN') {
+      // For non-admin users, filter to only show USER role accounts
       const users = state?.usersRecord?.userData || []
       const filteredUsers = users.filter(user => user.role === 'USER')
       setData(filteredUsers)
-    } else setData(state.usersRecord.userData)
+    } else {
+      // For ADMIN role, show all users with proper data handling
+      const allUsers = state?.usersRecord?.userData || []
+      console.log("Admin view - Users loaded:", allUsers.length)
+      setData(allUsers)
+    }
   }
   
   useEffect(() => {
@@ -208,57 +214,51 @@ const UsersTable = () => {
         ) : (
           <>
             <TableBody>
-              {data.slice().map(row => {
-                if (row.role === 'ADMIN') {
-                  return null
-                }
-
-                return (
-                  <TableRow key={row.id}>
-                    <TableCell>
-                      <Link href={`/user-documents?userId=${row.id}`} passHref>
-                        <Typography>{row.firstName + ' ' + row.lastName}</Typography>
-                      </Link>
-                    </TableCell>
-                    <TableCell>{row.email}</TableCell>
-                    <TableCell>{row.phone}</TableCell>
-                    <TableCell>
-                      {row.wallet 
-                        ? row.wallet.slice(0, 5) + '...' + row.wallet.slice(row.wallet.length - 5, row.wallet.length)
-                        : 'No wallet'
-                      }
-                    </TableCell>
-                    {state?.reducer?.userData?.userData?.user?.role !== 'ADMIN' ? (
-                      ''
-                    ) : (
-                      <>
-                        <TableCell>{row.role}</TableCell>
-                        <TableCell>{row.referralCode}</TableCell>
-                        <TableCell>
-                          <IconButton onClick={event => handleActionClick(event, row.id)}>
-                            <Icon icon='fluent-mdl2:more-vertical' />
-                          </IconButton>
-                          <Menu
-                            anchorEl={anchorEl}
-                            open={Boolean(anchorEl) && selectedRowId === row.id}
-                            onClose={handleCloseMenu}
-                          >
-                            <MenuItem onClick={event => handleRoleChange(event, row, 'DEVELOPER')}>
-                              {isLoading ? <CircularProgress size={20} /> : 'DEVELOPER'}
-                            </MenuItem>
-                            <MenuItem onClick={event => handleRoleChange(event, row, 'AGENT')}>
-                              {isLoading ? <CircularProgress size={20} /> : 'AGENT'}
-                            </MenuItem>
-                            <MenuItem onClick={event => handleRoleChange(event, row, 'USER')}>
-                              {isLoading ? <CircularProgress size={20} /> : 'USER'}
-                            </MenuItem>
-                          </Menu>
-                        </TableCell>
-                      </>
-                    )}
-                  </TableRow>
-                )
-              })}
+              {data.slice().map(row => (
+                <TableRow key={row.id}>
+                  <TableCell>
+                    <Link href={`/user-documents?userId=${row.id}`} passHref>
+                      <Typography>{row.firstName + ' ' + row.lastName}</Typography>
+                    </Link>
+                  </TableCell>
+                  <TableCell>{row.email}</TableCell>
+                  <TableCell>{row.phone}</TableCell>
+                  <TableCell>
+                    {row.wallet 
+                      ? row.wallet.slice(0, 5) + '...' + row.wallet.slice(row.wallet.length - 5, row.wallet.length)
+                      : 'No wallet'
+                    }
+                  </TableCell>
+                  {state?.reducer?.userData?.userData?.user?.role !== 'ADMIN' ? (
+                    ''
+                  ) : (
+                    <>
+                      <TableCell>{row.role}</TableCell>
+                      <TableCell>{row.referralCode}</TableCell>
+                      <TableCell>
+                        <IconButton onClick={event => handleActionClick(event, row.id)}>
+                          <Icon icon='fluent-mdl2:more-vertical' />
+                        </IconButton>
+                        <Menu
+                          anchorEl={anchorEl}
+                          open={Boolean(anchorEl) && selectedRowId === row.id}
+                          onClose={handleCloseMenu}
+                        >
+                          <MenuItem onClick={event => handleRoleChange(event, row, 'DEVELOPER')}>
+                            {isLoading ? <CircularProgress size={20} /> : 'DEVELOPER'}
+                          </MenuItem>
+                          <MenuItem onClick={event => handleRoleChange(event, row, 'AGENT')}>
+                            {isLoading ? <CircularProgress size={20} /> : 'AGENT'}
+                          </MenuItem>
+                          <MenuItem onClick={event => handleRoleChange(event, row, 'USER')}>
+                            {isLoading ? <CircularProgress size={20} /> : 'USER'}
+                          </MenuItem>
+                        </Menu>
+                      </TableCell>
+                    </>
+                  )}
+                </TableRow>
+              ))}
             </TableBody>
           </>
         )}

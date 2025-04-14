@@ -40,7 +40,6 @@ const KYC = () => {
     lastName: '',
     email: '',
     address: '',
-    street: '',
     state: '',
     postalCode: '',
     mobileNumber: '',
@@ -50,7 +49,7 @@ const KYC = () => {
     sourceOfIncome: '',
     otherSourceOfIncome: '',
     riskProfile: '',
-    experience: '',
+    street: '',
     certificates: '',
     passportImage: '',
     nicFrontImage: '',
@@ -345,6 +344,26 @@ const KYC = () => {
           return;
         }
         
+        // Skip validation for company field as it's optional
+        if (key === 'company') {
+          return;
+        }
+        
+        // Skip validation for street field as it's optional
+        if (key === 'street') {
+          return;
+        }
+        
+        // Skip validation for certificates field as it's optional
+        if (key === 'certificates') {
+          return;
+        }
+        
+        // Skip validation for email field as it's optional
+        if (key === 'email') {
+          return;
+        }
+        
         newErrors[key] = 'This field is required'
       }
     })
@@ -394,6 +413,12 @@ const KYC = () => {
     if (formData.sourceOfIncome === 'others' && formData.otherSourceOfIncome) {
       formData.sourceOfIncome = formData.otherSourceOfIncome
     }
+    
+    // Set default values for optional fields if they're empty
+    if (!formData.street) formData.street = " "
+    if (!formData.certificates) formData.certificates = " "
+    if (!formData.email) formData.email = " "
+    if (!formData.company) formData.company = "N/A"
 
     const isValidated = handleValidate()
     
@@ -511,18 +536,6 @@ const KYC = () => {
                 />
               </Grid>
               <Grid item xs={12} sm={2}></Grid>
-              <Grid item xs={12} sm={10}>
-                <TextField
-                  name='street'
-                  label='Street'
-                  value={formData.street}
-                  onChange={handleChange}
-                  error={!!errors.street}
-                  helperText={errors.street}
-                  fullWidth
-                />
-              </Grid>
-              <Grid item xs={12} sm={2}></Grid>
               <Grid item xs={12} sm={5}>
                 <TextField
                   name='state'
@@ -573,6 +586,7 @@ const KYC = () => {
                 <TextField
                   name='company'
                   label='Company'
+                  placeholder='FILL IN ONLY WHEN PARTICIPATING AS COMPANY'
                   value={formData.company}
                   onChange={handleChange}
                   error={!!errors.company}
@@ -593,23 +607,6 @@ const KYC = () => {
                 </Button>
               </Grid>
 
-              <Grid item xs={12} sm={12}>
-                <Divider />
-              </Grid>
-              <Grid item xs={12} sm={2}>
-                <Typography variant='subtitle1'>No. of Certificates:</Typography>
-              </Grid>
-              <Grid item xs={12} sm={10}>
-                <TextField
-                  name='certificates'
-                  label='No. of Certificates'
-                  value={formData.certificates}
-                  onChange={handleChange}
-                  error={!!errors.certificates}
-                  helperText={errors.certificates}
-                  fullWidth
-                />
-              </Grid>
               <Grid item xs={12} sm={12}>
                 <Divider />
               </Grid>

@@ -91,6 +91,11 @@ export const kyc = createAsyncThunk('appUsers/kyc', async data => {
   try {
     console.log('Submitting KYC for user ID:', data.userId);
     
+    // Ensure company field is not empty
+    if (!data.company || data.company === '') {
+      data.company = 'N/A';
+    }
+    
     // First check if user already has a KYC entry
     try {
       // For this check, we need a token. If one isn't available, we'll skip this step
@@ -127,7 +132,7 @@ export const kyc = createAsyncThunk('appUsers/kyc', async data => {
                 state: data.state,
                 postalCode: data.postalCode,
                 mobileNumber: data.mobileNumber,
-                company: data.company,
+                company: data.company || 'N/A',
                 pubkey: data.pubkey,
                 certificates: data.certificates,
                 passportImage: data.passportImage,
@@ -567,11 +572,14 @@ export const fetchUser = createAsyncThunk('appUsers/fetchUser', async data => {
     })
     response = await response.json()
     if (response.status === 200) {
+      console.log("User data fetched successfully:", response.data.data.length, "users")
       store.dispatch(setUser(response.data.data))
     } else {
+      console.error("Failed to fetch users:", response.message)
       store.dispatch(setUser(response.message))
     }
   } catch (error) {
+    console.error("Error fetching users:", error)
     toast.error(error.message)
   }
 })
