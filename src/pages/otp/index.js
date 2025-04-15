@@ -84,7 +84,15 @@ const OtpForm = () => {
   return (
     <>
       <Box textAlign='center' my={4}>
-        <Image alt='Home Owners Club' src={`/images/pages/hoc-logo.png`} width={150} height={150} />
+        <img 
+          alt='Home Owners Club' 
+          src='/images/pages/hoc-logo.png' 
+          style={{ 
+            width: '150px',
+            height: 'auto',
+            maxWidth: '100%'
+          }} 
+        />
       </Box>
       <Typography textAlign='center' variant='h6' gutterBottom>
         Kindly input the One-Time Password (OTP) sent to your email for secure login.
