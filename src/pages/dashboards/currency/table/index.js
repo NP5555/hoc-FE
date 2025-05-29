@@ -13,7 +13,7 @@ import {
   Pagination,
   Typography
 } from '@mui/material'
-import { makeStyles } from '@mui/styles'
+import { makeStyles } from 'src/utils/makeStyles'
 import Spinner from 'src/views/spinner'
 import { deleteCurrency, fetchBuysByUserId } from 'src/store/apps/user'
 

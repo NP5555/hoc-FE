@@ -17,6 +17,10 @@ const navigation = () => {
           path: '/dashboards/projects'
         },
         {
+          title: 'Public Projects',
+          path: '/public-projects'
+        },
+        {
           title: 'Type',
           path: '/dashboards/type'
         },

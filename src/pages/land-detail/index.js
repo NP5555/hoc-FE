@@ -26,7 +26,7 @@ import {
   FormControlLabel,
   Checkbox
 } from '@mui/material'
-import { makeStyles } from '@mui/styles'
+import { makeStyles } from 'src/utils/makeStyles'
 
 import { useSelector, useDispatch } from 'react-redux'
 import YouTube from 'react-youtube'

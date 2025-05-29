@@ -24,7 +24,7 @@ import {
   Typography,
   Pagination
 } from '@mui/material'
-import { makeStyles } from '@mui/styles'
+import { makeStyles } from 'src/utils/makeStyles'
 import Spinner from 'src/views/spinner'
 import * as Yup from 'yup'
 import { yupResolver } from '@hookform/resolvers/yup'

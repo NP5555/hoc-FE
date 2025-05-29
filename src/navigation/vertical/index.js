@@ -24,6 +24,10 @@ const navigation = () => {
           title: 'KYC',
           path: '/dashboards/kyc'
         },
+        {
+          title: 'Projects',
+          path: '/dashboards/admin-projects'
+        },
 
         // {
         //   title: 'Developers',

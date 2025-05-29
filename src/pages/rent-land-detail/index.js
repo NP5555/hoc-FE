@@ -23,7 +23,7 @@ import {
   TextField
 } from '@mui/material'
 import Lightbox from 'react-image-lightbox'
-import { makeStyles } from '@mui/styles'
+import { makeStyles } from 'src/utils/makeStyles'
 import 'react-image-lightbox/style.css'
 
 import { useSelector, useDispatch } from 'react-redux'

@@ -9,6 +9,10 @@ const navigation = () => {
           path: '/dashboards/analytics'
         },
         {
+          title: 'Projects',
+          path: '/public-projects'
+        },
+        {
           title: 'Lands',
           path: '/dashboards/agentLand'
         }

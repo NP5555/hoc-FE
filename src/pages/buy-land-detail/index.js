@@ -31,7 +31,7 @@ import {
   TableBody,
   Slider
 } from '@mui/material'
-import { makeStyles } from '@mui/styles'
+import { makeStyles } from 'src/utils/makeStyles'
 import { format } from 'date-fns'
 
 import { useSelector, useDispatch } from 'react-redux'

@@ -13,7 +13,7 @@ import {
   Paper,
   TableHead
 } from '@mui/material'
-import { makeStyles } from '@mui/styles'
+import { makeStyles } from 'src/utils/makeStyles'
 import toast from 'react-hot-toast'
 import { BASE_URL_API } from 'src/configs/const'
 
