@@ -102,11 +102,22 @@ const AdminProjectTable = () => {
   const getStatusColor = (status) => {
     switch (status) {
       case 'OPEN':
-        return 'success'
+        return {
+          backgroundColor: '#FFD700', // yellow background
+          color: '#000000', // black text
+          border: '1px solid #000000' // black border
+        }
       case 'CLOSE':
-        return 'error'
+        return {
+          backgroundColor: '#000000', // black background
+          color: '#FFD700', // yellow text
+          border: '1px solid #FFD700' // yellow border
+        }
       default:
-        return 'default'
+        return {
+          backgroundColor: '#E0E0E0',
+          color: '#000000'
+        }
     }
   }
 
@@ -155,8 +166,14 @@ const AdminProjectTable = () => {
                   <TableCell align='center'>
                     <Chip 
                       label={row.status} 
-                      color={getStatusColor(row.status)}
                       size="small"
+                      sx={{ 
+                        ...getStatusColor(row.status),
+                        '&.MuiChip-root': {
+                          borderRadius: '16px',
+                          fontWeight: 500
+                        }
+                      }}
                     />
                   </TableCell>
                   <TableCell align='center'>
@@ -166,8 +183,15 @@ const AdminProjectTable = () => {
                       <Button 
                         onClick={() => handleDeleteProject(row.id)} 
                         variant='outlined'
-                        color='error'
                         size='small'
+                        sx={{
+                          borderColor: '#FFD700',
+                          color: '#FFD700',
+                          '&:hover': {
+                            borderColor: '#FFD700',
+                            backgroundColor: 'rgba(255, 215, 0, 0.04)'
+                          }
+                        }}
                       >
                         <Icon fontSize='1.125rem' icon='tabler:trash' />
                       </Button>

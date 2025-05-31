@@ -876,9 +876,15 @@ export const updateProject = createAsyncThunk('appUsers/updateProject', async da
 // ** Fetch Project
 export const fetchProject = createAsyncThunk('appUsers/fetchProject', async data => {
   try {
-    // Validate developerId
-    if (!data.developerId) {
-      console.error('Developer ID is missing:', data);
+    // Get developer ID from either passed data or Redux store
+    const developerId = data.developerId || store.getState().reducer?.userData?.userData?.user?.id;
+    
+    // If no developer ID is available, handle gracefully
+    if (!developerId) {
+      console.error('Developer ID is missing:', { 
+        providedId: data.developerId, 
+        stateId: store.getState().reducer?.userData?.userData?.user?.id 
+      });
       store.dispatch(setProject({ 
         data: [], 
         meta: { 
@@ -889,18 +895,18 @@ export const fetchProject = createAsyncThunk('appUsers/fetchProject', async data
           currentPage: data.page || 1 
         } 
       }));
-      toast.error('Developer ID is required');
+      toast.error('Unable to fetch projects - Developer ID not found');
       return;
     }
 
     console.log('Fetching projects with params:', { 
       page: data.page, 
       take: data.take, 
-      developerId: data.developerId,
+      developerId,
       baseUrl: BASE_URL_API 
     });
 
-    const url = `${BASE_URL_API}/project/developerId?page=${data.page}&take=${data.take}&developerId=${data.developerId}`;
+    const url = `${BASE_URL_API}/project/developerId?page=${data.page}&take=${data.take}&developerId=${developerId}`;
     console.log('Full request URL:', url);
 
     let response = await fetch(url, {
@@ -911,8 +917,6 @@ export const fetchProject = createAsyncThunk('appUsers/fetchProject', async data
       }
     });
 
-    console.log('Response status:', response.status);
-
     // Handle non-200 responses
     if (!response.ok) {
       const errorData = await response.json().catch(() => null);
@@ -922,7 +926,6 @@ export const fetchProject = createAsyncThunk('appUsers/fetchProject', async data
         errorData
       });
       
-      // Handle 404 specially
       if (response.status === 404) {
         const emptyData = {
           data: [], 
@@ -935,7 +938,6 @@ export const fetchProject = createAsyncThunk('appUsers/fetchProject', async data
           } 
         };
         store.dispatch(setProject(emptyData));
-        toast.error('No projects found for this developer');
         return;
       }
       
@@ -945,8 +947,6 @@ export const fetchProject = createAsyncThunk('appUsers/fetchProject', async data
     const responseData = await response.json();
     console.log('Project fetch response:', responseData);
 
-    // The response format is { status, message, data: { data: [], meta: {} } }
-    // We need to dispatch the data object which contains both data array and meta
     if (responseData.status === 200) {
       store.dispatch(setProject(responseData.data));
     } else {
@@ -1110,6 +1110,21 @@ export const fetchType = createAsyncThunk('appUsers/fetchType', async data => {
       return { error: 'Token is required' };
     }
 
+    if (!data.developerId) {
+      console.error('Developer ID is missing for fetchType:', data);
+      store.dispatch(setTypes({
+        data: [], 
+        meta: { 
+          totalItems: 0, 
+          itemCount: 0, 
+          itemsPerPage: data.take || 10, 
+          totalPages: 0, 
+          currentPage: data.page || 1 
+        } 
+      }));
+      return { error: 'Developer ID is required' };
+    }
+
     console.log('Fetching types with params:', { 
       page: data.page, 
       take: data.take,
@@ -1117,15 +1132,12 @@ export const fetchType = createAsyncThunk('appUsers/fetchType', async data => {
       baseUrl: BASE_URL_API 
     });
 
-    // Construct the URL - include developerId as a parameter if it's provided
-    let url = `${BASE_URL_API}/type?page=${data.page}&take=${data.take}`;
-    if (data.developerId) {
-      url += `&developerId=${data.developerId}`;
-    }
-    
+    // Construct URL with developerId as a query parameter
+    const url = `${BASE_URL_API}/type/developerId?page=${data.page}&take=${data.take}&developerId=${data.developerId}`;
     console.log('Full request URL for types:', url);
+    console.log(data.developerId);
 
-    let response = await fetch(url, {
+    const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -1135,12 +1147,16 @@ export const fetchType = createAsyncThunk('appUsers/fetchType', async data => {
 
     console.log('Types response status:', response.status);
 
-    // Handle non-200 responses
     if (!response.ok) {
-      // Handle 404 specially
+      const errorData = await response.json().catch(() => null);
+      console.error('Type fetch error:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorData
+      });
+      
       if (response.status === 404) {
-        console.log('No types found (404), returning empty data');
-        const emptyData = { 
+        const emptyData = {
           data: [], 
           meta: { 
             totalItems: 0, 
@@ -1154,35 +1170,21 @@ export const fetchType = createAsyncThunk('appUsers/fetchType', async data => {
         return emptyData;
       }
       
-      // For other errors
-      const errorText = await response.text().catch(() => 'Unknown error');
-      console.error(`Error ${response.status} fetching types:`, errorText);
-      
-      store.dispatch(setTypes({
-        data: [], 
-        meta: { 
-          totalItems: 0, 
-          itemCount: 0, 
-          itemsPerPage: data.take || 10, 
-          totalPages: 0, 
-          currentPage: data.page || 1 
-        } 
-      }));
-      return { error: errorText };
+      throw new Error(errorData?.message || 'Failed to fetch types');
     }
 
     const responseData = await response.json();
-    console.log('Types fetch response data:', responseData);
-
+    console.log('Types API response:', responseData);
+    
     if (responseData.status === 200) {
       store.dispatch(setTypes(responseData.data));
-      return responseData.data;
+      return responseData;
     } else {
-      store.dispatch(setTypes(responseData.message || 'Failed to load types'));
-      return { error: responseData.message || 'Failed to load types' };
+      console.error('Unexpected response format:', responseData);
+      return { error: 'Unexpected response format from server' };
     }
   } catch (error) {
-    console.error('Exception in fetchType:', error);
+    console.error('Error in fetchType:', error);
     store.dispatch(setTypes({
       data: [], 
       meta: { 
@@ -1191,9 +1193,9 @@ export const fetchType = createAsyncThunk('appUsers/fetchType', async data => {
         itemsPerPage: data.take || 10, 
         totalPages: 0, 
         currentPage: data.page || 1 
-      } 
+      }
     }));
-    return { error: error.message || 'Failed to load types' };
+    return { error: error.message || 'An unexpected error occurred' };
   }
 })
 

@@ -55,28 +55,53 @@ const Land = () => {
   useEffect(() => {
     setError('');
     
-    // Get user data and token from Redux store
+    // Get user data from Redux store
     const userData = state.reducer?.userData?.userData;
+    console.log('Full Redux state:', state);
+    console.log('UserData from store:', userData);
     
     if (!userData) {
+      console.error('User data is missing from Redux store');
       setError('User data not available. Please log in again.');
       return;
     }
     
     const token = userData?.token?.accessToken;
     if (!token) {
+      console.error('Token is missing from user data');
       setError('Authentication token not found. Please log in again.');
       return;
     }
     
     // Get developer ID from user data
     const developerId = userData?.user?.id;
+    const userRole = userData?.user?.role;
+    
+    console.log('User details:', {
+      developerId,
+      userRole,
+      hasToken: !!token,
+      fullUserData: userData.user
+    });
+    
     if (!developerId) {
+      console.error('Developer ID is missing from user data:', userData.user);
       setError('Developer ID not found. Please ensure you have the correct permissions.');
       return;
     }
     
-    console.log('Fetching types with developerId:', developerId);
+    if (userRole !== 'DEVELOPER' && userRole !== 'ADMIN') {
+      console.error('User does not have developer permissions:', userRole);
+      setError('You do not have permission to access this page. Please contact your administrator.');
+      return;
+    }
+    
+    console.log('Fetching types with params:', {
+      token: token ? 'present' : 'missing',
+      developerId,
+      page: 1,
+      take: 10
+    });
     
     // Dispatch action with all required parameters
     dispatch(
@@ -84,10 +109,11 @@ const Land = () => {
         token,
         page: 1,
         take: 10,
-        developerId
+        developerId: developerId // Ensure we're explicitly passing the developerId
       })
     ).then(response => {
       if (response?.error) {
+        console.error('Error response from fetchType:', response.error);
         setError(`Failed to load types: ${response.error}`);
       }
     }).catch(err => {

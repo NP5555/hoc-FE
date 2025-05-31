@@ -22,9 +22,9 @@ import {
   CircularProgress,
   TextField
 } from '@mui/material'
-import Lightbox from 'react-image-lightbox'
+import Lightbox from 'react-18-image-lightbox'
 import { makeStyles } from 'src/utils/makeStyles'
-import 'react-image-lightbox/style.css'
+import 'react-18-image-lightbox/style.css'
 
 import { useSelector, useDispatch } from 'react-redux'
 import YouTube from 'react-youtube'
